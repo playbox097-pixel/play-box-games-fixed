@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Red Light, Green Light Game</title>
+  <style>
+    body { background: #e0f7fa; margin: 0; font-family: sans-serif; transition: box-shadow 0.2s; }
+    body.red-warning {
+      box-shadow: 0 0 0 12px #e53935cc inset;
+      animation: redflash 0.8s linear;
+    }
+    @keyframes redflash {
+      0% { box-shadow: 0 0 0 0 #e53935cc inset; }
+      30% { box-shadow: 0 0 0 16px #e53935cc inset; }
+      60% { box-shadow: 0 0 0 8px #e53935cc inset; }
+      100% { box-shadow: 0 0 0 0 #e53935cc inset; }
+    }
+    #gameCanvas { display: block; margin: 32px auto; background: #fff; border-radius: 16px; box-shadow: 0 4px 32px #0003; }
+    #ui { text-align: center; margin-top: 12px; }
+    .big-light { font-size: 2.5em; font-weight: bold; margin: 0.5em 0; }
+    .winner { color: #43a047; font-size: 1.5em; }
+    .eliminated { color: #e53935; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="400"></canvas>
+  <div id="ui">
+    <div id="lightStatus" class="big-light"></div>
+    <div id="countdown"></div>
+    <div id="winner"></div>
+    <div id="players"></div>
+  </div>
+  <script>
+    // --- Game Constants ---
+    const PLAYER_COUNT = 5; // Change for 3–8 players
+    const PLAYER_COLORS = ['#f43', '#3af', '#6f6', '#ff0', '#f0f', '#0ff', '#fa0', '#888'];
+    const PLAYER_RADIUS = 18;
+  const START_LINE = 0;
+  const FINISH_LINE = 640;
+  const GAME_HEIGHT = 400;
+  const CAMERA_X = 200; // Player 1's screen x position
+    const MOVE_SPEED = 120; // px/sec
+    const WOBBLE_FREQ = 6;
+    const WOBBLE_AMP = 6;
+    const SLIDE_DECAY = 0.85;
+    const COUNTDOWN_TIME = 3; // seconds
+
+    // --- Game State ---
+    let players = [];
+    let gameState = 'countdown'; // 'countdown', 'running', 'ended'
+    let currentLight = 'red'; // 'green' or 'red'
+    let lightTimer = 0;
+    let nextLightSwitch = 0;
+    let winner = null;
+    let eliminatedPlayers = [];
+    let countdown = COUNTDOWN_TIME;
+    let keys = {};
+    let lastUpdate = performance.now();
+
+    // --- Audio Cues ---
+    const greenSound = new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfae7e2.mp3');
+    const redSound = new Audio('https://cdn.pixabay.com/audio/2022/07/26/audio_124bfae7e2.mp3');
+    greenSound.playbackRate = 1.2;
+    redSound.playbackRate = 0.7;
+
+    // --- Player Object ---
+    function makePlayer(i) {
+      return {
+        id: i,
+        name: 'Player ' + (i+1),
+        color: PLAYER_COLORS[i % PLAYER_COLORS.length],
+        x: START_LINE,
+        y: 90 + i * 40,
+        vy: 0,
+        vx: 0,
+        alive: true,
+        finished: false,
+        slide: 0,
+        progress: 0,
+        eliminated: false,
+        wobble: Math.random() * Math.PI * 2,
+        speedBoost: 1,
+        particleT: 0,
+      };
+    }
+
+    // --- Game Functions ---
+
+    function startGame() {
+      players = [];
+      for (let i = 0; i < PLAYER_COUNT; i++) players.push(makePlayer(i));
+      gameState = 'countdown';
+      currentLight = 'red';
+      lightTimer = 0;
+      nextLightSwitch = 0;
+      winner = null;
+      eliminatedPlayers = [];
+      countdown = COUNTDOWN_TIME;
+      document.getElementById('winner').textContent = '';
+      document.getElementById('players').textContent = '';
+      setTimeout(() => switchLight('green'), 1000);
+    }
+
+    function switchLight(force) {
+      // Randomize next interval
+      if (force) currentLight = force;
+      else currentLight = (currentLight === 'green') ? 'red' : 'green';
+      if (currentLight === 'green') {
+        nextLightSwitch = 1 + Math.random() * 2; // 1–3s
+        greenSound.currentTime = 0; greenSound.play();
+        document.body.classList.remove('red-warning');
+      } else {
+        nextLightSwitch = 1 + Math.random(); // 1–2s
+        redSound.currentTime = 0; redSound.play();
+        // Add warning effect
+        document.body.classList.add('red-warning');
+        setTimeout(() => document.body.classList.remove('red-warning'), 800);
+      }
+      lightTimer = 0;
+      updateUI();
+    }
+
+    function updatePlayers(dt) {
+      for (const p of players) {
+        if (!p.alive || p.finished) continue;
+        // Movement input (only for Player 1, but you can extend for multiplayer)
+        let move = 0;
+        if (p.id === 0) {
+          if (keys['ArrowRight'] || keys['d']) move = 1;
+          if (keys['ArrowLeft'] || keys['a']) move = -1;
+        } else {
+          // AI: move forward on green, stop on red
+          if (currentLight === 'green' && Math.random() < 0.98) move = 1;
+        }
+        // Only move on green light
+        if (currentLight === 'green' && move > 0) {
+          p.vx = MOVE_SPEED * p.speedBoost;
+        } else {
+          // Slide/overshoot for wobbly effect
+          p.vx *= SLIDE_DECAY;
+        }
+        // Wobble
+        p.wobble += dt * WOBBLE_FREQ * (0.8 + Math.random()*0.4);
+        // Update position
+        p.x += p.vx * dt + Math.sin(p.wobble) * WOBBLE_AMP * dt;
+        // Clamp to finish
+        if (p.x > FINISH_LINE) {
+          p.x = FINISH_LINE;
+          p.finished = true;
+          if (!winner) winner = p;
+        }
+        // Progress bar
+        p.progress = Math.max(0, Math.min(1, (p.x - START_LINE) / (FINISH_LINE - START_LINE)));
+      }
+    }
+
+    function checkEliminations() {
+      for (const p of players) {
+        if (!p.alive || p.finished) continue;
+        // If moving during red light, eliminate
+        if (currentLight === 'red' && Math.abs(p.vx) > 10) {
+          p.alive = false;
+          p.eliminated = true;
+          eliminatedPlayers.push(p);
+          p.particleT = 0;
+        }
+      }
+      // Win/lose conditions
+      const alive = players.filter(p => p.alive && !p.finished);
+      if (winner || alive.length === 0) {
+        gameState = 'ended';
+        showWinner();
+      }
+    }
+
+    function drawScene(ctx) {
+      // Clear
+      ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+      // Camera follows Player 1
+      const p1 = players[0];
+      const camOffset = CAMERA_X - p1.x;
+
+      // Draw finish line (relative to camera)
+      ctx.save();
+      ctx.strokeStyle = '#43a047';
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(FINISH_LINE + camOffset, 40);
+      ctx.lineTo(FINISH_LINE + camOffset, GAME_HEIGHT-40);
+      ctx.stroke();
+      ctx.restore();
+
+      // Draw other players ahead (as obstacles/silhouettes)
+      for (let i = 1; i < players.length; i++) {
+        const p = players[i];
+        if (!p.alive || p.finished) continue;
+        // Only draw if ahead of Player 1
+        if (p.x > p1.x - 10) {
+          ctx.save();
+          ctx.globalAlpha = 0.7;
+          ctx.beginPath();
+          ctx.arc(p.x + camOffset, GAME_HEIGHT/2, PLAYER_RADIUS, 0, Math.PI*2);
+          ctx.fillStyle = p.color;
+          ctx.shadowColor = p.color;
+          ctx.shadowBlur = 8;
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // Draw Player 1 (always at CAMERA_X)
+      ctx.save();
+      ctx.globalAlpha = p1.alive ? 1 : 0.3;
+      ctx.beginPath();
+      ctx.arc(CAMERA_X, GAME_HEIGHT/2, PLAYER_RADIUS, 0, Math.PI*2);
+      ctx.fillStyle = p1.color;
+      ctx.shadowColor = p1.color;
+      ctx.shadowBlur = p1.alive ? 12 : 0;
+      ctx.fill();
+      ctx.restore();
+
+      // Draw Red Light/Green Light character (top center, always visible)
+      ctx.save();
+      ctx.translate(ctx.canvas.width/2, 60);
+      ctx.rotate(Math.sin(Date.now()/400) * 0.15); // Wobble for humor
+      ctx.fillStyle = currentLight === 'green' ? '#43a047' : '#e53935';
+      ctx.beginPath();
+      ctx.arc(0, 0, 32, 0, Math.PI*2);
+      ctx.fill();
+      ctx.font = 'bold 20px sans-serif';
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.fillText(currentLight === 'green' ? 'GO!' : 'STOP!', 0, 8);
+      ctx.restore();
+
+      // Progress bar (bottom)
+      ctx.save();
+      ctx.fillStyle = '#222';
+      ctx.fillRect(80, GAME_HEIGHT-30, 640, 12);
+      ctx.fillStyle = p1.color;
+      const prog = Math.max(0, Math.min(1, (p1.x-START_LINE)/(FINISH_LINE-START_LINE)));
+      ctx.fillRect(80, GAME_HEIGHT-30, 640*prog, 12);
+      ctx.restore();
+    }
+
+    function updateUI() {
+      document.getElementById('lightStatus').textContent = currentLight === 'green' ? 'GREEN LIGHT!' : 'RED LIGHT!';
+      document.getElementById('lightStatus').style.color = currentLight === 'green' ? '#43a047' : '#e53935';
+      let alive = players.filter(p => p.alive && !p.finished).length;
+      document.getElementById('players').textContent = alive + ' players remaining';
+    }
+
+    function showWinner() {
+      let msg = '';
+      if (winner) msg = winner.name + ' wins!';
+      else msg = 'No one wins!';
+      document.getElementById('winner').textContent = msg;
+      document.getElementById('winner').className = winner ? 'winner' : 'eliminated';
+      let elim = eliminatedPlayers.map(p => p.name).join(', ');
+      if (elim) document.getElementById('winner').textContent += ' | Eliminated: ' + elim;
+    }
+
+    // --- Main Loop ---
+    function gameLoop() {
+      const now = performance.now();
+      const dt = Math.min(0.045, (now - lastUpdate) / 1000);
+      lastUpdate = now;
+
+      const ctx = document.getElementById('gameCanvas').getContext('2d');
+
+      if (gameState === 'countdown') {
+        document.getElementById('countdown').textContent = 'Starting in ' + Math.ceil(countdown) + '...';
+        countdown -= dt;
+        if (countdown <= 0) {
+          gameState = 'running';
+          switchLight('green');
+          document.getElementById('countdown').textContent = '';
+        }
+      } else if (gameState === 'running') {
+        lightTimer += dt;
+        if (lightTimer > nextLightSwitch) {
+          switchLight();
+        }
+        updatePlayers(dt);
+        checkEliminations();
+      }
+      drawScene(ctx);
+      requestAnimationFrame(gameLoop);
+    }
+
+    // --- Controls ---
+    window.addEventListener('keydown', e => { keys[e.key] = true; });
+    window.addEventListener('keyup', e => { keys[e.key] = false; });
+
+    // --- Start Game ---
+    startGame();
+    updateUI();
+    gameLoop();
+
+    // Optional: Restart on click if ended
+    document.getElementById('gameCanvas').addEventListener('click', () => {
+      if (gameState === 'ended') startGame();
+    });
+  </script>
+</body>
+</html>

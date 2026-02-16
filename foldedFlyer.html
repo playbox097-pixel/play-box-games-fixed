@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Folded Flyer Terrain</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #222;
+            overflow: hidden;
+        }
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+        <div id="game-container"></div>
+        <div id="start-screen" style="position:fixed;inset:0;z-index:1000;background:linear-gradient(135deg,#b3e0ff 0%,#fff 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;">
+            <h1 style="font-size:3rem;color:#2196f3;margin-bottom:1.5rem;text-shadow:0 2px 8px #fff8;">Folded Flyer</h1>
+            <p style="font-size:1.2rem;color:#333;margin-bottom:2rem;max-width:400px;text-align:center;">Glide your paper plane through the canyon!<br>Use <b>WASD</b> or <b>Arrow Keys</b> to steer.<br>Hold <b>W</b> or <b>Up</b> to pitch down, <b>S</b> or <b>Down</b> to pitch up.<br>Bank with <b>A/D</b> or <b>Left/Right</b> to turn.<br><br>Click <b>Start</b> to fly!</p>
+            <button id="start-btn" style="font-size:1.5rem;padding:1rem 3rem;background:#2196f3;color:#fff;border:none;border-radius:1.5rem;box-shadow:0 2px 12px #2196f366;cursor:pointer;transition:background 0.2s;">Start</button>
+        </div>
+            <!-- Speed Lever UI (hidden until start) -->
+            <div id="speed-lever-container" style="position:fixed;right:40px;bottom:60px;z-index:1001;display:none;flex-direction:column;align-items:center;">
+                <label for="speed-lever" style="color:#222;font-weight:bold;margin-bottom:8px;">Speed</label>
+                <input id="speed-lever" type="range" min="0.5" max="3.0" step="0.01" value="1.0" style="writing-mode: vertical-lr; direction: rtl; width:32px; height:180px;">
+                <span id="speed-lever-value" style="margin-top:6px;color:#222;font-size:1.1em;">1.0x</span>
+            </div>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <script src="https://cdn.babylonjs.com/earcut.min.js"></script>
+    <script>
+
+    // Utility: seeded random for reproducible maps
+    function mulberry32(a) {
+        return function() {
+            var t = a += 0x6D2B79F5;
+            t = Math.imul(t ^ t >>> 15, t | 1);
+            t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+            return ((t ^ t >>> 14) >>> 0) / 4294967296;
+        }
+    }
+        // Pick a random seed each run
+        const terrainSeed = Math.floor(Math.random() * 1e9);
+        const rand = mulberry32(terrainSeed);
+    // Controls state (global)
+    let input = { left: false, right: false, up: false, down: false };
+        // Plane flight state
+        let planeVelocity = new BABYLON.Vector3(0, 0, 0);
+        let speed = 1.0; // Declare speed at the top level for accessibility
+    const canvas = document.createElement('canvas');
+    canvas.style.width = '100vw';
+    canvas.style.height = '100vh';
+    canvas.tabIndex = 1;
+    document.getElementById('game-container').appendChild(canvas);
+    canvas.focus();
+        const engine = new BABYLON.Engine(canvas, true);
+        const scene = new BABYLON.Scene(engine);
+        scene.clearColor = new BABYLON.Color3(0.5, 0.8, 1.0);
+
+        // Camera: true chase cam, locked behind the plane
+        const camera = new BABYLON.FreeCamera('ChaseCam', new BABYLON.Vector3(0, 2, -10), scene);
+        camera.attachControl(canvas, true);
+
+        // Light
+        const light = new BABYLON.HemisphericLight('light', new BABYLON.Vector3(0, 1, 0), scene);
+        light.intensity = 0.9;
+
+        // Stylized canyon valley terrain with river, cliffs, moss, waterfalls, and fog
+        // Circular mountain terrain
+        // --- Chunked Terrain System ---
+        const CHUNK_SIZE = 200;
+        const CHUNK_SUBDIV = 60;
+        const RENDER_RADIUS = 2; // Chunks in each direction
+        const chunkMap = new Map();
+
+        function getChunkKey(cx, cz) {
+            return `${cx},${cz}`;
+        }
+
+        function generateChunk(cx, cz) {
+            const key = getChunkKey(cx, cz);
+            if (chunkMap.has(key)) return;
+            const x0 = cx * CHUNK_SIZE;
+            const z0 = cz * CHUNK_SIZE;
+            // Large biome zones: each 10x10 chunk block is a biome
+            const BIOME_SIZE = 10;
+            const biomeX = Math.floor(cx / BIOME_SIZE);
+            const biomeZ = Math.floor(cz / BIOME_SIZE);
+            // Biome selection: 0 = savanna, 1 = forest, 2/3/4/5 = snowy (snowy is half)
+            let biomeType = ((biomeX + biomeZ) % 6);
+            const isSavanna = biomeType === 0;
+            const isSnowy = biomeType >= 2;
+            const ground = BABYLON.MeshBuilder.CreateGround(`ground_${key}`, {
+                width: CHUNK_SIZE,
+                height: CHUNK_SIZE,
+                subdivisions: CHUNK_SUBDIV
+            }, scene);
+            ground.position.x = x0;
+            ground.position.z = z0;
+            // Generate terrain heights/colors
+            const positions = ground.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+            const colors = [];
+            for (let i = 0; i < positions.length; i += 3) {
+                const x = positions[i] + x0 - CHUNK_SIZE/2;
+                const z = positions[i + 2] + z0 - CHUNK_SIZE/2;
+                const dist = Math.sqrt(x*x + z*z);
+                let rim = Math.max(0, 60 * Math.pow(dist/1200, 2.1));
+                let cliff = 0;
+                if (dist > 1200 * 0.80 && dist < 1200 * 0.97) {
+                    cliff = 32 * Math.exp(-Math.pow((dist - 1200 * 0.89) / (1200 * 0.07), 2));
+                    cliff += Math.sin(x * 0.09 + z * 0.13) * 7 + Math.random() * 4;
+                }
+                let valley = -30 + Math.sin(dist * 0.01) * 3;
+                // Biome terrain undulation and elevation
+                let undulation = Math.sin(x * 0.02 + z * 0.018) * (isSavanna ? 5.5 : isSnowy ? 7.5 : 2.5);
+                let y = rim * 0.25 + valley + undulation + cliff
+                    + Math.sin(x * 0.012 + z * 0.017 + rand() * 6) * (isSavanna ? 22 + rand() * 8 : isSnowy ? 28 + rand() * 12 : 16 + rand() * 8)
+                    + Math.sin(x * 0.021 - z * 0.013 + rand() * 6) * (isSavanna ? 16 + rand() * 8 : isSnowy ? 22 + rand() * 10 : 10 + rand() * 8);
+                y *= isSnowy ? 0.95 : 0.65;
+                positions[i + 1] = y + (isSnowy ? 30 : 0); // higher elevation for snowy
+                // Biome ground color
+                if (isSavanna) {
+                    if (y < 8 && rand() > 0.4) {
+                        colors.push(0.7, 0.65 + rand() * 0.1, 0.22, 1); // dry grass
+                    } else if (cliff > 10) {
+                        colors.push(0.55, 0.48 + rand() * 0.08, 0.29, 1); // dry cliff
+                    } else {
+                        colors.push(0.65, 0.6 + rand() * 0.1, 0.35, 1); // dry rock
+                    }
+                } else if (isSnowy) {
+                    if (y < 8 && rand() > 0.3) {
+                        colors.push(0.95, 0.97, 1, 1); // snow
+                    } else if (cliff > 10) {
+                        colors.push(0.85, 0.88 + rand() * 0.05, 0.92, 1); // icy cliff
+                    } else {
+                        colors.push(0.88, 0.92 + rand() * 0.05, 0.98, 1); // snowy rock
+                    }
+                } else {
+                    if (y < 8 && rand() > 0.2) {
+                        colors.push(0.3, 0.7, 0.3, 1); // moss/grass
+                    } else if (cliff > 10) {
+                        colors.push(0.42, 0.36 + rand() * 0.08, 0.29, 1); // brown/gray for cliff
+                    } else {
+                        colors.push(0.45, 0.4 + rand() * 0.1, 0.35, 1); // rock
+                    }
+                }
+            }
+            ground.setVerticesData(BABYLON.VertexBuffer.ColorKind, colors);
+            ground.updateVerticesData(BABYLON.VertexBuffer.PositionKind, positions);
+            ground.convertToFlatShadedMesh();
+            // Toon/gradient style ground
+            const groundMat = new BABYLON.StandardMaterial('groundMat', scene);
+            if (isSnowy) {
+                groundMat.diffuseColor = new BABYLON.Color3(0.93, 0.97, 1);
+                groundMat.specularColor = new BABYLON.Color3(0.8, 0.9, 1);
+                groundMat.emissiveColor = new BABYLON.Color3(0.7, 0.8, 1);
+            } else {
+                groundMat.diffuseColor = new BABYLON.Color3(0.65, 0.8, 0.5);
+                groundMat.specularColor = new BABYLON.Color3(0.1, 0.2, 0.1);
+                groundMat.emissiveColor = new BABYLON.Color3(0.2, 0.3, 0.1);
+            }
+            groundMat.alpha = 1;
+            groundMat.vertexColorUseAlpha = true;
+            groundMat.useGlossinessFromSpecularMapAlpha = false;
+            ground.material = groundMat;
+            // --- Snow particle system for snowy biomes ---
+            if (isSnowy) {
+                const snowSystem = new BABYLON.ParticleSystem(`snow_${key}`, 800, scene);
+                snowSystem.particleTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/flare.png", scene);
+                snowSystem.emitter = new BABYLON.Vector3(x0, 120, z0);
+                snowSystem.minEmitBox = new BABYLON.Vector3(-CHUNK_SIZE/2, 0, -CHUNK_SIZE/2);
+                snowSystem.maxEmitBox = new BABYLON.Vector3(CHUNK_SIZE/2, 0, CHUNK_SIZE/2);
+                snowSystem.color1 = new BABYLON.Color4(1, 1, 1, 0.7);
+                snowSystem.color2 = new BABYLON.Color4(0.9, 0.95, 1, 0.5);
+                snowSystem.minSize = 2.5;
+                snowSystem.maxSize = 5.5;
+                snowSystem.minLifeTime = 2.5;
+                snowSystem.maxLifeTime = 5.5;
+                snowSystem.emitRate = 180;
+                snowSystem.blendMode = BABYLON.ParticleSystem.BLENDMODE_STANDARD;
+                snowSystem.gravity = new BABYLON.Vector3(0, -12, 0);
+                snowSystem.direction1 = new BABYLON.Vector3(-1, -2, 1);
+                snowSystem.direction2 = new BABYLON.Vector3(1, -2, -1);
+                snowSystem.minAngularSpeed = 0;
+                snowSystem.maxAngularSpeed = Math.PI;
+                snowSystem.minEmitPower = 1;
+                snowSystem.maxEmitPower = 3;
+                snowSystem.updateSpeed = 0.015;
+                snowSystem.start();
+                objects.push(snowSystem);
+            }
+
+            // --- Track all objects for this chunk ---
+            const objects = [];
+
+            // --- Trees for this chunk ---
+            // Biome tree count and style
+            let treeCount = 15;
+            if (isSavanna) treeCount = 3 + Math.floor(rand() * 3);
+            if (isSnowy) treeCount = 8 + Math.floor(rand() * 6);
+            for (let t = 0; t < treeCount; t++) {
+                const angle = rand() * Math.PI * 2;
+                const dist = CHUNK_SIZE * (0.18 + rand() * 0.65);
+                const x = x0 + Math.cos(angle) * dist;
+                const z = z0 + Math.sin(angle) * dist;
+                let rim = Math.max(0, 60 * Math.pow(dist/1200, 2.1));
+                let y = rim * 0.25 + (-30 + Math.sin(dist * 0.01) * 3)
+                    + Math.sin(x * 0.012 + z * 0.017 + rand() * 6) * (isSavanna ? 22 + rand() * 8 : isSnowy ? 28 + rand() * 12 : 16 + rand() * 8)
+                    + Math.sin(x * 0.021 - z * 0.013 + rand() * 6) * (isSavanna ? 16 + rand() * 8 : isSnowy ? 22 + rand() * 10 : 10 + rand() * 8);
+                y *= isSnowy ? 0.95 : 0.65;
+                y += (isSnowy ? 30 : 0);
+                if (y < 12 || isSnowy) {
+                    const tree = BABYLON.MeshBuilder.CreateCylinder('tree', {
+                        diameterTop: 0,
+                        diameterBottom: 2.2 + rand() * 0.7,
+                        height: isSnowy ? 14 + rand() * 8 : 10 + rand() * 6,
+                        tessellation: 7
+                    }, scene);
+                    tree.position = new BABYLON.Vector3(x, y + (tree.height/2), z);
+                    // Toon/gradient style tree
+                    const treeMat = new BABYLON.StandardMaterial('treeMat', scene);
+                    if (isSavanna) {
+                        treeMat.diffuseColor = new BABYLON.Color3(0.7, 0.7, 0.22);
+                        treeMat.emissiveColor = new BABYLON.Color3(0.18, 0.18, 0.08);
+                    } else if (isSnowy) {
+                        treeMat.diffuseColor = new BABYLON.Color3(0.92, 0.95, 1);
+                        treeMat.emissiveColor = new BABYLON.Color3(0.7, 0.8, 1);
+                    } else {
+                        treeMat.diffuseColor = new BABYLON.Color3(0.18 + rand()*0.1, 0.7, 0.18 + rand()*0.1);
+                        treeMat.emissiveColor = new BABYLON.Color3(0.08, 0.18, 0.08);
+                    }
+                    treeMat.specularColor = new BABYLON.Color3(0.1, 0.2, 0.1);
+                    tree.material = treeMat;
+                    objects.push(tree);
+                }
+            }
+
+            // --- Big mountains for this chunk (optional: only on some chunks) ---
+            // Biome mountain density and style
+            let mountainCount = 0;
+            if (isSnowy) mountainCount = 2 + Math.floor(rand() * 3);
+            else if (isSavanna) mountainCount = rand() > 0.7 ? 1 : 0;
+            else mountainCount = rand() > 0.7 ? 1 : 0;
+            for (let mIdx = 0; mIdx < mountainCount; mIdx++) {
+                const mx = x0 + (rand()-0.5)*CHUNK_SIZE*0.8;
+                const mz = z0 + (rand()-0.5)*CHUNK_SIZE*0.8;
+                const mheight = isSnowy ? 220 + rand()*180 : 160 + rand()*120;
+                const mbase = isSnowy ? 180 + rand()*80 : 120 + rand()*80;
+                const mcolor = isSnowy
+                    ? new BABYLON.Color3(0.92, 0.95, 1)
+                    : new BABYLON.Color3(0.35+rand()*0.1,0.32+rand()*0.1,0.28+rand()*0.1);
+                const m = BABYLON.MeshBuilder.CreateCylinder('bigmountain', {
+                    diameterTop: 0,
+                    diameterBottom: mbase,
+                    height: mheight,
+                    tessellation: 14
+                }, scene);
+                m.position = new BABYLON.Vector3(mx, mheight/2-5 + (isSnowy ? 30 : 0), mz);
+                // Toon/gradient style mountain
+                const mat = new BABYLON.StandardMaterial('bigmountainMat', scene);
+                mat.diffuseColor = mcolor;
+                mat.emissiveColor = isSnowy ? new BABYLON.Color3(0.7, 0.8, 1) : new BABYLON.Color3(0.12, 0.10, 0.08);
+                mat.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+                m.material = mat;
+                objects.push(m);
+            }
+    // --- Add a sun mesh ---
+    const sunMesh = BABYLON.MeshBuilder.CreateSphere('sun', {diameter: 60, segments: 24}, scene);
+    sunMesh.position = new BABYLON.Vector3(0, 600, -900);
+    const sunMat = new BABYLON.StandardMaterial('sunMat', scene);
+    sunMat.emissiveColor = new BABYLON.Color3(1, 0.95, 0.7);
+    sunMat.diffuseColor = new BABYLON.Color3(1, 0.95, 0.7);
+    sunMat.specularColor = new BABYLON.Color3(1, 1, 0.8);
+    sunMat.disableLighting = true;
+    sunMesh.material = sunMat;
+
+    // --- Fog tuning for atmosphere ---
+    scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
+    scene.fogColor = new BABYLON.Color3(0.7, 0.85, 1);
+    scene.fogDensity = 0.0022;
+
+            chunkMap.set(key, { ground, objects });
+        }
+
+        function updateChunks(px, pz) {
+            const pcx = Math.floor(px / CHUNK_SIZE);
+            const pcz = Math.floor(pz / CHUNK_SIZE);
+            // Generate nearby chunks
+            for (let dx = -RENDER_RADIUS; dx <= RENDER_RADIUS; dx++) {
+                for (let dz = -RENDER_RADIUS; dz <= RENDER_RADIUS; dz++) {
+                    generateChunk(pcx + dx, pcz + dz);
+                }
+            }
+            // Remove far chunks
+            for (const [key, chunk] of chunkMap.entries()) {
+                const [cx, cz] = key.split(',').map(Number);
+                if (Math.abs(cx - pcx) > RENDER_RADIUS + 1 || Math.abs(cz - pcz) > RENDER_RADIUS + 1) {
+                    chunk.ground.dispose();
+                    if (chunk.objects) {
+                        for (const obj of chunk.objects) {
+                            obj.dispose();
+                        }
+                    }
+                    chunkMap.delete(key);
+                }
+            }
+        }
+
+        // Initial chunk load
+        updateChunks(0, 0);
+
+
+
+        // Winding river mesh (overlay for water reflection)
+        // Central lake/river
+        const river = BABYLON.MeshBuilder.CreateDisc("river", {
+            radius: 120,
+            tessellation: 80
+        }, scene);
+        river.position.y = -11.5;
+        river.material = new BABYLON.StandardMaterial('riverMat', scene);
+        river.material.diffuseColor = new BABYLON.Color3(0.3, 0.5, 1);
+        river.material.specularColor = new BABYLON.Color3(0.7, 0.8, 1);
+        river.material.alpha = 0.7;
+
+
+        // Waterfalls (animated planes, bigger and more visible)
+        function createWaterfall(x, z, height = 28, width = 7) {
+            const waterfall = BABYLON.MeshBuilder.CreatePlane('waterfall', {width, height}, scene);
+            waterfall.position = new BABYLON.Vector3(x, height/2-8, z);
+            waterfall.rotation.x = Math.PI / 2.2;
+            const mat = new BABYLON.StandardMaterial('waterfallMat', scene);
+            mat.diffuseColor = new BABYLON.Color3(0.7, 0.9, 1);
+            mat.alpha = 0.55;
+            mat.emissiveColor = new BABYLON.Color3(0.7, 0.9, 1);
+            mat.specularColor = new BABYLON.Color3(0.9, 0.9, 1);
+            waterfall.material = mat;
+            return waterfall;
+        }
+    // A few waterfalls at the rim
+    createWaterfall(-900, 900, 60, 20);
+    createWaterfall(1100, -800, 70, 25);
+                // Biome ground color logic
+
+        // Series of BIG mountains along the canyon
+        function createBigMountain(x, z, height, base, color) {
+            const m = BABYLON.MeshBuilder.CreateCylinder('bigmountain', {
+                diameterTop: 0,
+                diameterBottom: base,
+                height: height,
+                tessellation: 14
+            }, scene);
+            m.position = new BABYLON.Vector3(x, height/2-5, z);
+            const mat = new BABYLON.StandardMaterial('bigmountainMat', scene);
+            mat.diffuseColor = color;
+            mat.specularColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+            m.material = mat;
+            return m;
+        }
+    // A few big mountains scattered around
+    createBigMountain(-900, 0, 220, 200, new BABYLON.Color3(0.4,0.35,0.3));
+    createBigMountain(900, 900, 260, 220, new BABYLON.Color3(0.38,0.33,0.28));
+    createBigMountain(-1000, -800, 300, 260, new BABYLON.Color3(0.36,0.32,0.26));
+    createBigMountain(0, -1100, 220, 200, new BABYLON.Color3(0.42,0.37,0.32));
+    createBigMountain(400, 400, 160, 140, new BABYLON.Color3(0.39,0.34,0.29));
+
+        // Atmospheric fog
+    scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
+    scene.fogColor = new BABYLON.Color3(0.7, 0.85, 1);
+    scene.fogDensity = 0.003;
+
+        // Sunlight
+        const sun = new BABYLON.DirectionalLight('sun', new BABYLON.Vector3(-0.5, -1, 0.5), scene);
+        sun.intensity = 1.2;
+
+        // Realistic 3D folded paper plane mesh (custom geometry)
+        const planeData = {
+            positions: [
+                // Top vertices
+                0, 0.12, 2.5,    // 0: nose top
+                -1.5, 0.1, -1.5, // 1: left wing tip top
+                1.5, 0.1, -1.5,  // 2: right wing tip top
+                0, 0.1, -1.2,    // 3: tail top (center)
+                -0.5, 0.25, -0.5, // 4: left fold top (raised)
+                0.5, 0.25, -0.5,  // 5: right fold top (raised)
+                // Bottom vertices
+                0, -0.12, 2.5,    // 6: nose bottom
+                -1.5, -0.1, -1.5, // 7: left wing tip bottom
+                1.5, -0.1, -1.5,  // 8: right wing tip bottom
+                0, -0.1, -1.2,    // 9: tail bottom (center)
+                -0.5, -0.25, -0.5, // 10: left fold bottom (lowered)
+                0.5, -0.25, -0.5   // 11: right fold bottom (lowered)
+            ],
+            indices: [
+                // Top faces
+                0,4,5, 0,5,2, 0,1,4, 4,1,3, 5,3,2, 4,5,3,
+                // Bottom faces
+                6,11,10, 6,8,11, 6,10,7, 10,9,7, 11,8,9, 10,11,9,
+                // Sides
+                0,6,7, 0,7,1, 0,2,8, 0,8,6,
+                1,7,10, 1,10,4, 2,5,11, 2,11,8,
+                4,10,9, 4,9,3, 5,3,9, 5,9,11
+            ]
+        };
+        const plane = new BABYLON.Mesh("paperPlane", scene);
+        const vertexData = new BABYLON.VertexData();
+        vertexData.positions = planeData.positions;
+        vertexData.indices = planeData.indices;
+        BABYLON.VertexData.ComputeNormals(vertexData.positions, vertexData.indices, vertexData.normals = []);
+        vertexData.applyToMesh(plane);
+    // Start above ground center, facing -Z (toward ground)
+    plane.position = new BABYLON.Vector3(0, 15, 0);
+    plane.rotation.x = 0.08; // slight nose down
+    plane.rotation.y = 0;    // face -Z
+    const planeMat = new BABYLON.StandardMaterial('planeMat', scene);
+    planeMat.diffuseColor = new BABYLON.Color3(1, 1, 1);
+    planeMat.specularColor = new BABYLON.Color3(0.7, 0.7, 0.7);
+    planeMat.emissiveColor = new BABYLON.Color3(0.95, 0.95, 1);
+    plane.material = planeMat;
+    // Plane movement
+    let velocity = new BABYLON.Vector3(0, 0, 0.5);
+
+                    // Speed lever UI (move after velocity is declared)
+                    const speedLever = document.getElementById('speed-lever');
+                    const speedLeverValue = document.getElementById('speed-lever-value');
+                    speedLever.addEventListener('input', function() {
+                        speed = parseFloat(speedLever.value);
+                        speedLeverValue.textContent = speed.toFixed(2) + 'x';
+                    });
+
+                    // Show lever only after game starts
+                    document.getElementById('start-btn').addEventListener('click', function() {
+                        document.getElementById('speed-lever-container').style.display = 'flex';
+                    });
+
+        // Add a solid orange keel (bottom part) under the wings
+        const keelShape = [
+            new BABYLON.Vector3(0, -0.25, 2.5),   // nose bottom
+            new BABYLON.Vector3(-0.18, -0.25, -1.2), // left tail bottom
+            new BABYLON.Vector3(0.18, -0.25, -1.2)   // right tail bottom
+        ];
+        const keelPath = [
+            new BABYLON.Vector3(0, 0, 0),
+            new BABYLON.Vector3(0, 0, 1.0)
+        ];
+        const keel = BABYLON.MeshBuilder.ExtrudeShape("keel", {
+            shape: keelShape,
+            path: [
+                new BABYLON.Vector3(0, 0, 0),
+                new BABYLON.Vector3(0, 0, 3.7)
+            ],
+            scale: 1,
+            cap: BABYLON.Mesh.CAP_ALL,
+            sideOrientation: BABYLON.Mesh.DOUBLESIDE
+        }, scene);
+        keel.position = new BABYLON.Vector3(0, -0.13, -0.7);
+        const keelMat = new BABYLON.StandardMaterial('keelMat', scene);
+        keelMat.diffuseColor = new BABYLON.Color3(1, 0.4, 0);
+        keelMat.emissiveColor = new BABYLON.Color3(1, 0.4, 0);
+        keel.material = keelMat;
+
+        // Camera follows plane
+        camera.lockedTarget = plane;
+
+        // Camera update: always behind the plane (register after plane creation)
+    scene.registerBeforeRender(() => {
+            // Update chunks to follow the plane
+            updateChunks(plane.position.x, plane.position.z);
+            const camDistance = 8;
+            const camHeight = 2.5;
+            const world = plane.getWorldMatrix();
+            const forward = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(0, 0, 1), world).normalize();
+            const up = BABYLON.Vector3.TransformNormal(new BABYLON.Vector3(0, 1, 0), world).normalize();
+            camera.position = plane.position
+                .subtract(forward.scale(camDistance))
+                .add(up.scale(camHeight));
+            camera.setTarget(plane.position.add(forward.scale(2)));
+        });
+
+        // Controls
+                        velocity.z = 0.18 + Math.max(0, -plane.rotation.x) * speed; // nose down = faster
+        window.addEventListener('keydown', e => {
+            if (e.key === 'a' || e.key === 'ArrowLeft') input.left = true;
+            if (e.key === 'd' || e.key === 'ArrowRight') input.right = true;
+            if (e.key === 'w' || e.key === 'ArrowUp') input.up = true;
+            if (e.key === 's' || e.key === 'ArrowDown') input.down = true;
+        });
+        window.addEventListener('keyup', e => {
+            if (e.key === 'a' || e.key === 'ArrowLeft') input.left = false;
+            if (e.key === 'd' || e.key === 'ArrowRight') input.right = false;
+            if (e.key === 'w' || e.key === 'ArrowUp') input.up = false;
+            if (e.key === 's' || e.key === 'ArrowDown') input.down = false;
+        });
+
+    // Plane movement
+    velocity = new BABYLON.Vector3(0, 0, 0.5);
+        scene.registerBeforeRender(() => {
+            // Controls
+            // Roll (tilt) control only
+            let rolling = false;
+            if (input.left) {
+                plane.rotation.z = Math.min(plane.rotation.z + 0.04, 0.5); // tilt left (positive z)
+                rolling = true;
+            }
+            if (input.right) {
+                plane.rotation.z = Math.max(plane.rotation.z - 0.04, -0.5); // tilt right (negative z)
+                rolling = true;
+            }
+            // Self-leveling: aerodynamic stability
+            if (!rolling) {
+                // Simulate a restoring force proportional to roll angle
+                plane.rotation.z -= plane.rotation.z * 0.08;
+                if (Math.abs(plane.rotation.z) < 0.01) plane.rotation.z = 0;
+            }
+            // Yaw (turn) based on roll (match sign)
+            plane.rotation.y -= plane.rotation.z * 0.045;
+            if (input.up) plane.rotation.x -= 0.012;
+            if (input.down) plane.rotation.x += 0.012;
+
+            // Clamp pitch (nose up/down)
+            plane.rotation.x = Math.max(-0.5, Math.min(0.5, plane.rotation.x));
+
+            // Gliding physics
+            // Forward speed (speed lever applied)
+            velocity.z = (0.18 + Math.max(0, -plane.rotation.x) * 0.5) * speed; // nose down = faster, speed lever multiplies
+            // Drag
+            velocity.z *= 0.995;
+
+            // Lift (proportional to forward speed and angle, reduced)
+            let lift = Math.cos(plane.rotation.x) * velocity.z * 0.018;
+            // Gravity (slightly increased)
+            let gravity = 0.014;
+            // Net vertical velocity
+            velocity.y += lift - gravity;
+            // Damping
+            velocity.y *= 0.98;
+
+            // Plane's local forward direction
+            const localForward = new BABYLON.Vector3(0, 0, 1);
+            // Rotate the velocity vector by the plane's yaw (rotation.y)
+            const world = plane.getWorldMatrix();
+            const forward = BABYLON.Vector3.TransformNormal(localForward, world).normalize();
+            // Move in the direction the plane is facing
+            plane.position.addInPlace(forward.scale(velocity.z));
+            plane.position.y += velocity.y;
+
+            // Prevent going below a minimum height
+            if (plane.position.y < 2) {
+                plane.position.y = 2;
+                velocity.y = 0.02;
+            }
+        });
+
+        // Start screen logic
+        document.getElementById('game-container').style.display = 'none';
+        let gameStarted = false;
+        const startScreen = document.getElementById('start-screen');
+        const startBtn = document.getElementById('start-btn');
+        startBtn.onclick = () => {
+            console.log('Start button clicked');
+            startScreen.style.display = 'none';
+            document.getElementById('game-container').style.display = '';
+            document.getElementById('speed-lever-container').style.display = 'flex';
+            // Focus the canvas for controls
+            canvas.focus();
+            gameStarted = true;
+        };
+
+        // Only run game loop after start
+        engine.runRenderLoop(() => {
+            if (gameStarted) {
+                scene.render();
+            }
+        });
+    window.addEventListener('resize', () => {
+        engine.resize();
+    });
+    </script>
+</body>
+</html>

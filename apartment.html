@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Apartment</title>
+  <style>
+    body { background: #eaeaea; margin: 0; font-family: sans-serif; }
+    .apartment {
+      width: 700px;
+      margin: 40px auto;
+      background: #fff;
+      border-radius: 18px;
+      box-shadow: 0 4px 32px #0002;
+      padding: 32px 40px 40px 40px;
+      position: relative;
+    }
+    h1 { text-align: center; }
+    .room {
+      border: 2px solid #bbb;
+      border-radius: 12px;
+      margin: 18px 0;
+      padding: 18px;
+      background: #f7f7f7;
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+    .room img {
+      width: 80px; height: 80px; border-radius: 10px; object-fit: cover; box-shadow: 0 2px 8px #0001;
+    }
+    .room-info { flex: 1; }
+    .room-title { font-size: 1.3em; font-weight: bold; }
+    .room-desc { color: #555; margin-top: 6px; }
+  </style>
+</head>
+<body>
+  <div class="apartment">
+    <h1>🏠 My Apartment</h1>
+    <div class="room">
+      <img src="https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=400&q=80" alt="Living Room">
+      <div class="room-info">
+        <div class="room-title">Living Room</div>
+        <div class="room-desc">A cozy space with a comfy sofa, TV, and a big window for sunlight.</div>
+      </div>
+    </div>
+    <div class="room">
+      <img src="https://images.unsplash.com/photo-1519710164239-da123dc03ef4?auto=format&fit=crop&w=400&q=80" alt="Kitchen">
+      <div class="room-info">
+        <div class="room-title">Kitchen</div>
+        <div class="room-desc">Modern kitchen with all the essentials for cooking and sharing meals.</div>
+      </div>
+    </div>
+    <div class="room">
+      <img src="https://images.unsplash.com/photo-1464983953574-0892a716854b?auto=format&fit=crop&w=400&q=80" alt="Bedroom">
+      <div class="room-info">
+        <div class="room-title">Bedroom</div>
+        <div class="room-desc">A peaceful bedroom with a soft bed and a reading lamp for relaxing nights.</div>
+      </div>
+    </div>
+    <div class="room">
+      <img src="https://images.unsplash.com/photo-1509228468518-180dd4864904?auto=format&fit=crop&w=400&q=80" alt="Bathroom">
+      <div class="room-info">
+        <div class="room-title">Bathroom</div>
+        <div class="room-desc">Clean and bright bathroom with a shower and fresh towels.</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

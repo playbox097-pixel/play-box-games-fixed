@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snack Stack 3000</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #1a1a1a;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+        #game-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+        }
+        canvas {
+            display: block;
+        }
+        #canvas2d {
+            background: #ffe4b3;
+            border: 4px solid #8b4513;
+            border-radius: 8px;
+        }
+        #canvas3d {
+            display: none;
+            width: 100% !important;
+            height: 100% !important;
+            max-width: 100%;
+            max-height: 100%;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="canvas2d" width="400" height="600"></canvas>
+        <canvas id="canvas3d" width="600" height="600"></canvas>
+        <div id="space-indicator" style="position: absolute; top: 10px; left: 10px; background: rgba(255,0,0,0.8); color: white; padding: 10px; border-radius: 5px; font-weight: bold; display: none;">
+            SPACE DETECTED!
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
+        const canvas2d = document.getElementById('canvas2d');
+        const canvas3d = document.getElementById('canvas3d');
+        const ctx = canvas2d.getContext('2d');
+        const spaceIndicator = document.getElementById('space-indicator');
+
+        // Make sure canvas can receive keyboard events
+        canvas2d.tabIndex = 1;
+        canvas3d.tabIndex = 1;
+        canvas2d.focus();
+
+        // Click to focus
+        canvas2d.addEventListener('click', () => canvas2d.focus());
+        canvas3d.addEventListener('click', () => canvas3d.focus());
+
+        let gameMode = '2d';
+        let gameRunning = true;
+        let score = 0;
+        let comboMultiplier = 1;
+        let lives = 3;
+        let upgradeCharge = 0;
+        const UPGRADE_THRESHOLD = 10;
+
+        // 3D Scene Setup
+        const renderer = new THREE.WebGLRenderer({ canvas: canvas3d, antialias: true });
+        renderer.setSize(800, 600);
+        renderer.shadowMap.enabled = true;
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87ceeb);
+
+        const camera = new THREE.PerspectiveCamera(60, 800 / 600, 0.1, 1000);
+        camera.position.set(10, 15, 10);
+        camera.lookAt(0, 0, 0);
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (gameMode === '3d') {
+                const container = document.getElementById('game-container');
+                const width = container.clientWidth;
+                const height = container.clientHeight;
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
+            }
+        });
+
+        const controls = new OrbitControls(camera, canvas3d);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 2;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(5, 10, 5);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        const groundGeo = new THREE.CylinderGeometry(5, 5, 0.5, 32);
+        const groundMat = new THREE.MeshStandardMaterial({ color: 0x8b4513 });
+        const ground = new THREE.Mesh(groundGeo, groundMat);
+        ground.position.y = -0.25;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        const snacks = [
+            { emoji: '🍕', color: '#ff6b35', name: 'Pizza' },
+            { emoji: '🍔', color: '#ffb347', name: 'Burger' },
+            { emoji: '🌮', color: '#ffd93d', name: 'Taco' },
+            { emoji: '🍰', color: '#ff69b4', name: 'Cake' },
+            { emoji: '🍩', color: '#ff1493', name: 'Donut' },
+            { emoji: '🍪', color: '#d2691e', name: 'Cookie' }
+        ];
+
+        let currentSnack = null;
+        let stack2d = [];
+        let particles2d = [];
+        let stack3d = [];
+        let hazards3d = [];
+        let fallingSnack3d = null;
+        let snackVelocity = 0;
+
+        const keys = { a: false, d: false, ArrowLeft: false, ArrowRight: false, s: false, ArrowDown: false };
+
+        // Listen on BOTH document AND canvas
+        function handleSpace(e) {
+            if (e.key === ' ' || e.code === 'Space' || e.keyCode === 32) {
+                console.log('🚀 SPACE PRESSED! Mode:', gameMode, 'Has snack:', !!currentSnack);
+                
+                // Show visual indicator
+                if (spaceIndicator) {
+                    spaceIndicator.style.display = 'block';
+                    setTimeout(() => spaceIndicator.style.display = 'none', 500);
+                }
+                
+                if (gameMode === '2d' && currentSnack) {
+                    console.log('✅ Dropping snack at position:', currentSnack.x, currentSnack.y);
+                    dropSnack();
+                } else if (gameMode === '3d' && fallingSnack3d) {
+                    console.log('✅ Dropping 3D snack');
+                    dropSnack3d();
+                } else {
+                    console.log('❌ Cannot drop - no snack available');
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                return false;
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key in keys) {
+                keys[e.key] = true;
+                e.preventDefault();
+            }
+            handleSpace(e);
+        });
+
+        canvas2d.addEventListener('keydown', handleSpace);
+        canvas3d.addEventListener('keydown', handleSpace);
+        window.addEventListener('keydown', handleSpace);
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key in keys) {
+                keys[e.key] = false;
+                e.preventDefault();
+            }
+        });
+
+        function spawnSnack2d() {
+            const snack = snacks[Math.floor(Math.random() * snacks.length)];
+            currentSnack = {
+                ...snack,
+                x: canvas2d.width / 2,
+                y: 50,
+                width: 60,
+                height: 40,
+                speed: 3,
+                fallSpeed: 0.8, // Slow auto-fall speed
+                autoMoveSpeed: 2 + Math.random() * 2, // Auto-move speed
+                autoMoveDirection: Math.random() < 0.5 ? -1 : 1 // Random direction
+            };
+        }
+
+        function dropSnack() {
+            if (!currentSnack) return;
+            
+            // Force the snack to land position immediately
+            let landed = false;
+            const snackBottom = canvas2d.height - 100;
+            
+            if (stack2d.length === 0) {
+                currentSnack.y = snackBottom;
+                stack2d.push({ ...currentSnack });
+                landed = true;
+            } else {
+                const topSnack = stack2d[stack2d.length - 1];
+                const overlap = Math.abs(currentSnack.x - topSnack.x);
+                
+                if (overlap < currentSnack.width * 0.6) {
+                    currentSnack.y = topSnack.y - currentSnack.height;
+                    stack2d.push({ ...currentSnack });
+                    landed = true;
+                    score += 10 * comboMultiplier;
+                    comboMultiplier += 0.5;
+                    upgradeCharge++;
+                    createParticles2d(currentSnack.x, currentSnack.y, currentSnack.color);
+                    
+                    if (upgradeCharge >= UPGRADE_THRESHOLD) {
+                        setTimeout(() => switchTo3D(), 500);
+                    }
+                } else {
+                    lives--;
+                    comboMultiplier = 1;
+                    createParticles2d(currentSnack.x, canvas2d.height - 80, '#ff0000');
+                    
+                    if (lives <= 0) {
+                        gameRunning = false;
+                        endGame();
+                        return;
+                    }
+                }
+            }
+            
+            if (landed && window.parent) {
+                window.parent.postMessage({ type: 'game-result', result: 'win' }, '*');
+            }
+            
+            currentSnack = null;
+            setTimeout(() => spawnSnack2d(), 300);
+        }
+
+        function createParticles2d(x, y, color) {
+            for (let i = 0; i < 10; i++) {
+                particles2d.push({
+                    x, y,
+                    vx: (Math.random() - 0.5) * 6,
+                    vy: (Math.random() - 0.5) * 6,
+                    size: Math.random() * 5 + 2,
+                    color,
+                    life: 1
+                });
+            }
+        }
+
+        function updateParticles2d() {
+            particles2d = particles2d.filter(p => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.2;
+                p.life -= 0.02;
+                return p.life > 0;
+            });
+        }
+
+        function draw2D() {
+            ctx.clearRect(0, 0, canvas2d.width, canvas2d.height);
+
+            const grad = ctx.createLinearGradient(0, 0, 0, canvas2d.height);
+            grad.addColorStop(0, '#ffe4b3');
+            grad.addColorStop(1, '#ffd480');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, canvas2d.width, canvas2d.height);
+
+            ctx.fillStyle = '#8b4513';
+            ctx.fillRect(0, canvas2d.height - 100, canvas2d.width, 100);
+
+            stack2d.forEach(snack => {
+                ctx.fillStyle = snack.color;
+                ctx.fillRect(snack.x - snack.width / 2, snack.y, snack.width, snack.height);
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(snack.x - snack.width / 2, snack.y, snack.width, snack.height);
+                ctx.font = '30px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(snack.emoji, snack.x, snack.y + 30);
+            });
+
+            if (currentSnack) {
+                // Auto-fall slowly
+                currentSnack.y += currentSnack.fallSpeed;
+                
+                // Auto-move side to side
+                currentSnack.x += currentSnack.autoMoveSpeed * currentSnack.autoMoveDirection;
+                
+                // Bounce off walls
+                if (currentSnack.x <= 30 || currentSnack.x >= canvas2d.width - 30) {
+                    currentSnack.autoMoveDirection *= -1;
+                }
+                
+                // Player can override with keys
+                if (keys.a || keys.ArrowLeft) currentSnack.x -= currentSnack.speed;
+                if (keys.d || keys.ArrowRight) currentSnack.x += currentSnack.speed;
+                if (keys.s || keys.ArrowDown) currentSnack.fallSpeed = 8;
+                else if (currentSnack.fallSpeed > 0.8) currentSnack.fallSpeed = 0.8;
+                
+                currentSnack.x = Math.max(30, Math.min(canvas2d.width - 30, currentSnack.x));
+                
+                // Auto-drop when reaches bottom (but not if space was pressed)
+                const targetY = stack2d.length === 0 ? canvas2d.height - 100 : stack2d[stack2d.length - 1].y;
+                if (currentSnack && currentSnack.y >= targetY - currentSnack.height) {
+                    dropSnack();
+                }
+                
+                // Check if currentSnack still exists after potential drop
+                if (currentSnack) {
+                    ctx.fillStyle = currentSnack.color;
+                    ctx.fillRect(currentSnack.x - currentSnack.width / 2, currentSnack.y, currentSnack.width, currentSnack.height);
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(currentSnack.x - currentSnack.width / 2, currentSnack.y, currentSnack.width, currentSnack.height);
+                    ctx.font = '30px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(currentSnack.emoji, currentSnack.x, currentSnack.y + 30);
+                }
+            }
+
+            particles2d.forEach(p => {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = p.color;
+                ctx.fillRect(p.x, p.y, p.size, p.size);
+            });
+            ctx.globalAlpha = 1;
+
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 20px Arial';
+            ctx.textAlign = 'left';
+            ctx.fillText(`Score: ${score}`, 10, 30);
+            ctx.fillText(`Lives: ${'❤️'.repeat(lives)}`, 10, 60);
+            ctx.fillText(`Combo: x${comboMultiplier.toFixed(1)}`, 10, 90);
+            
+            ctx.fillStyle = '#333';
+            ctx.fillRect(10, canvas2d.height - 30, 200, 20);
+            ctx.fillStyle = '#00ff00';
+            ctx.fillRect(10, canvas2d.height - 30, (upgradeCharge / UPGRADE_THRESHOLD) * 200, 20);
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(10, canvas2d.height - 30, 200, 20);
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('TOWER UPGRADE', 110, canvas2d.height - 16);
+
+            ctx.font = '14px Arial';
+            ctx.fillStyle = '#333';
+            ctx.fillText('A/D or ←/→ to move | SPACE to drop', canvas2d.width / 2, canvas2d.height - 50);
+        }
+
+        function switchTo3D() {
+            gameMode = '3d';
+            canvas2d.style.display = 'none';
+            canvas3d.style.display = 'block';
+            
+            // Resize renderer to fit container
+            const container = document.getElementById('game-container');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            renderer.setSize(width, height);
+            camera.aspect = width / height;
+            camera.updateProjectionMatrix();
+            
+            stack2d.forEach((snack, i) => {
+                const geo = new THREE.BoxGeometry(1.5, 0.5, 1.5);
+                const mat = new THREE.MeshStandardMaterial({ color: snack.color });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.y = i * 0.5;
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                scene.add(mesh);
+                stack3d.push({ mesh, emoji: snack.emoji });
+            });
+            
+            upgradeCharge = 0;
+            spawnSnack3d();
+            spawnHazard3d();
+        }
+
+        function spawnSnack3d() {
+            if (fallingSnack3d) return;
+            
+            const snack = snacks[Math.floor(Math.random() * snacks.length)];
+            const geo = new THREE.BoxGeometry(1.5, 0.5, 1.5);
+            const mat = new THREE.MeshStandardMaterial({ color: snack.color });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set(0, 20, 0);
+            mesh.castShadow = true;
+            scene.add(mesh);
+            
+            fallingSnack3d = { mesh, emoji: snack.emoji, vx: 0, vz: 0 };
+            snackVelocity = 0;
+        }
+
+        function spawnHazard3d() {
+            if (!gameRunning || gameMode !== '3d') return;
+            
+            const geo = new THREE.SphereGeometry(0.3, 8, 8);
+            const mat = new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 0.5 });
+            const mesh = new THREE.Mesh(geo, mat);
+            mesh.position.set((Math.random() - 0.5) * 8, 20, (Math.random() - 0.5) * 8);
+            scene.add(mesh);
+            
+            hazards3d.push({ mesh, vy: -0.1 });
+            setTimeout(() => spawnHazard3d(), 2000 + Math.random() * 3000);
+        }
+
+        function dropSnack3d() {
+            if (!fallingSnack3d) return;
+            snackVelocity = -0.5;
+        }
+
+        function update3D() {
+            if (!fallingSnack3d) return;
+
+            if (keys.a || keys.ArrowLeft) fallingSnack3d.vx = -0.15;
+            else if (keys.d || keys.ArrowRight) fallingSnack3d.vx = 0.15;
+            else fallingSnack3d.vx *= 0.9;
+
+            if (keys.s || keys.ArrowDown) snackVelocity -= 0.02;
+            
+            fallingSnack3d.mesh.position.x += fallingSnack3d.vx;
+            fallingSnack3d.mesh.position.z += fallingSnack3d.vz;
+            
+            snackVelocity -= 0.01;
+            fallingSnack3d.mesh.position.y += snackVelocity;
+
+            const bound = 4;
+            fallingSnack3d.mesh.position.x = Math.max(-bound, Math.min(bound, fallingSnack3d.mesh.position.x));
+            fallingSnack3d.mesh.position.z = Math.max(-bound, Math.min(bound, fallingSnack3d.mesh.position.z));
+
+            const targetY = stack3d.length * 0.5;
+            if (fallingSnack3d.mesh.position.y <= targetY) {
+                fallingSnack3d.mesh.position.y = targetY;
+                stack3d.push(fallingSnack3d);
+                fallingSnack3d = null;
+                score += 15 * comboMultiplier;
+                comboMultiplier += 0.5;
+                
+                if (window.parent) {
+                    window.parent.postMessage({ type: 'game-result', result: 'win' }, '*');
+                }
+                
+                setTimeout(() => spawnSnack3d(), 800);
+            }
+
+            hazards3d = hazards3d.filter(hazard => {
+                hazard.mesh.position.y += hazard.vy;
+                hazard.vy -= 0.005;
+                
+                for (let i = stack3d.length - 1; i >= 0; i--) {
+                    const snack = stack3d[i];
+                    const dist = hazard.mesh.position.distanceTo(snack.mesh.position);
+                    if (dist < 1) {
+                        scene.remove(snack.mesh);
+                        stack3d.splice(i, 1);
+                        scene.remove(hazard.mesh);
+                        lives--;
+                        comboMultiplier = 1;
+                        
+                        if (lives <= 0) {
+                            gameRunning = false;
+                            endGame();
+                        }
+                        return false;
+                    }
+                }
+                
+                if (hazard.mesh.position.y < 0) {
+                    scene.remove(hazard.mesh);
+                    return false;
+                }
+                
+                return true;
+            });
+
+            controls.update();
+        }
+
+        function endGame() {
+            alert(`Game Over! Final Score: ${score}\nStack Height: ${stack2d.length + stack3d.length}`);
+            if (window.parent) {
+                window.parent.postMessage({ type: 'game-end' }, '*');
+            }
+        }
+
+        spawnSnack2d();
+
+        function gameLoop() {
+            if (!gameRunning) return;
+
+            if (gameMode === '2d') {
+                updateParticles2d();
+                draw2D();
+            } else {
+                update3D();
+                renderer.render(scene, camera);
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>

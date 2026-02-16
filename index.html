@@ -1,0 +1,324 @@
+  <div id="login-error" style="color: #f44; font-size: 1em; margin-top: 0.5em; text-align: center; display: none;"></div>
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Play Box</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- Login Panel -->
+    <div id="login-panel" style="display: flex; flex-direction: column; justify-content: center; align-items: center; margin: 1.5rem 0; gap: 0.5rem;">
+      <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
+        <button id="show-login-btn" class="button" type="button">Login</button>
+        <button id="show-register-btn" class="button" type="button">Make an Account</button>
+        <button id="export-accounts-btn" class="button" type="button">Export Accounts</button>
+        <label for="import-accounts-input" class="button" style="margin-bottom: 0; cursor: pointer;">Import Accounts
+          <input id="import-accounts-input" type="file" accept="application/json" style="display: none;" />
+        </label>
+      </div>
+      <form id="login-form" style="display: flex; gap: 0.5rem; align-items: center;">
+        <input id="login-username" type="text" placeholder="Username" minlength="3" maxlength="16" required style="padding: 0.5em; border-radius: 6px; border: 1px solid #ccc;" />
+        <input id="login-password" type="password" placeholder="Password" minlength="6" maxlength="24" required style="padding: 0.5em; border-radius: 6px; border: 1px solid #ccc;" />
+        <button id="login-btn" class="button" type="submit">Login</button>
+      </form>
+      <form id="register-form" style="display: none; gap: 0.5rem; align-items: center;">
+        <input id="register-username" type="text" placeholder="Username" minlength="3" maxlength="16" required style="padding: 0.5em; border-radius: 6px; border: 1px solid #ccc;" />
+        <input id="register-password" type="password" placeholder="Password" minlength="6" maxlength="24" required style="padding: 0.5em; border-radius: 6px; border: 1px solid #ccc;" />
+        <button id="register-btn" class="button" type="submit">Create Account</button>
+      </form>
+      <div id="welcome-user" style="display: none; align-items: center; gap: 0.5rem;">
+        <span id="welcome-msg"></span>
+        <button id="logout-btn" class="button" type="button">Logout</button>
+      </div>
+    </div>
+  <!-- BitPlay & Playbux Panel -->
+  <section id="economy-panel" class="economy-panel" style="display: flex; justify-content: center; gap: 2rem; margin: 1rem 0; align-items: center;">
+      <div>
+        <span id="pb-balance" style="font-weight: bold;">💰 Playbux: 0 PB</span>
+      </div>
+      <div>
+        <span id="bp-balance" style="font-weight: bold;">🪙 BitPlay: 0 BP</span>
+      </div>
+      <div>
+        <span id="bp-price" style="font-weight: bold;">BP Price: 100 PB</span>
+      </div>
+      <div>
+        <button id="buy-bp-btn" class="button">Buy 1 BP</button>
+        <button id="sell-bp-btn" class="button">Sell 1 BP</button>
+      </div>
+      <div>
+        <span id="bp-message" style="color: #0af; font-size: 0.95em;"></span>
+      </div>
+    </section>
+    <!-- BitPlay Price Graph -->
+    <div id="bitplay-graph-container" style="display: flex; justify-content: center; margin-bottom: 1.5rem;">
+      <canvas id="bitplay-graph" width="400" height="100" style="background: #181c24; border-radius: 8px; box-shadow: 0 2px 8px #0002;"></canvas>
+    </div>
+    <header class="app-header">
+      <div class="brand">
+        <span class="logo">
+          <span class="logo-icon">🎮</span>
+          <span class="logo-mark">PB</span>
+        </span>
+        <div class="brand-text">
+          <h1>Play Box</h1>
+          <p class="brand-tagline">Play Box arcade, right in your browser.</p>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="stats-toggle" class="button" aria-label="Toggle stats visibility" title="Show/hide stats">📊</button>
+        <span id="header-stats" class="header-stats stats-item hidden"></span>
+        <aside id="stats-panel" class="stats-panel hidden">
+          <button id="stats-close" class="button stats-close" aria-label="Close stats">✕</button>
+          <h2>📊 Your Stats</h2>
+          <div class="stats-row"><span>Playbux:</span> <span id="stats-playbux">0</span></div>
+          <div class="stats-row"><span>Login Streak:</span> <span id="stats-streak">0</span></div>
+          <div class="stats-row"><span>🔥 Daily Streak:</span> <span id="stats-daily-streak">0</span></div>
+          <div class="stats-row"><span>Games Played:</span> <span id="stats-games">0</span></div>
+          <div class="stats-row"><span>High Scores:</span> <span id="stats-highscores">-</span></div>
+        </aside>
+        <div class="streak-container stats-item hidden" title="Daily login streak">
+          <svg class="streak-ring" width="48" height="48" viewBox="0 0 48 48">
+            <circle class="streak-ring-bg" cx="24" cy="24" r="20" fill="none" stroke="var(--bg-2)" stroke-width="3"></circle>
+            <circle id="streak-ring-progress" class="streak-ring-progress" cx="24" cy="24" r="20" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="125.6" stroke-dashoffset="125.6" transform="rotate(-90 24 24)"></circle>
+            <text x="24" y="28" text-anchor="middle" class="streak-ring-text" id="streak-ring-text">0</text>
+          </svg>
+          <span class="streak-fire">🔥</span>
+        </div>
+        <span id="playbux-display" class="playbux-pill stats-item hidden" title="Total Playbux earned">💰 0 PB</span>
+        <input id="search" class="search" placeholder="Search games..." autocomplete="off" />
+        <button id="random-game" class="button" aria-label="Play random game" title="Play a random game">🎲 Random</button>
+        <button id="settings-toggle" class="button" aria-label="Open settings" title="Settings">⚙️</button>
+      </div>
+    </header>
+
+    <!-- Settings Panel -->
+    <div id="settings-panel" class="settings-panel hidden">
+      <div class="settings-backdrop"></div>
+      <div class="settings-content">
+        <div class="settings-header">
+          <h2>⚙️ Settings</h2>
+          <button id="settings-close" class="button" type="button">✕</button>
+        </div>
+        <div class="settings-body">
+          <div class="settings-section">
+            <h3>🎨 Visual Settings</h3>
+            <div class="settings-row">
+              <button id="theme-toggle" class="button settings-btn" aria-label="Toggle theme">� Dark Mode</button>
+              <span class="settings-label">Switch between light and dark mode</span>
+            </div>
+            <div class="settings-row">
+              <button id="teacher-mode" class="button settings-btn" aria-label="Toggle Teacher Safe Mode">🛡️ Teacher Mode</button>
+              <span class="settings-label">Mutes sound & simplifies visuals</span>
+            </div>
+            <div class="settings-row">
+              <button id="compact-mode" class="button settings-btn" aria-label="Toggle Compact Mode">📦 Compact Mode</button>
+              <span class="settings-label">Smaller UI for better screen fit</span>
+            </div>
+            <div class="settings-row">
+              <button id="fullscreen-toggle" class="button settings-btn" aria-label="Toggle fullscreen">⛶ Fullscreen</button>
+              <span class="settings-label">Enter/exit fullscreen mode</span>
+            </div>
+          </div>
+          <div class="settings-section">
+            <h3>🔊 Audio Settings</h3>
+            <div class="settings-row">
+              <button id="mute-toggle" class="button settings-btn" aria-label="Toggle sound">🔇 Mute</button>
+              <span class="settings-label">Toggle all sound effects</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <main class="layout">
+    <aside id="sidebar" class="sidebar">
+      <nav class="tabs" aria-label="Sections">
+        <button id="tab-home" class="tab-btn" aria-controls="game-list" aria-selected="true">Home</button>
+        <button id="tab-single" class="tab-btn" aria-controls="game-list" aria-selected="false">Single Play</button>
+        <button id="tab-classic" class="tab-btn" aria-controls="game-list" aria-selected="false">Classic Games</button>
+        <button id="tab-ai" class="tab-btn" aria-controls="game-list" aria-selected="false">AI</button>
+        <button id="tab-shooting" class="tab-btn" aria-controls="game-list" aria-selected="false">Shooting</button>
+        <button id="tab-3d" class="tab-btn" aria-controls="game-list" aria-selected="false">3D</button>
+        <button id="tab-multi" class="tab-btn" aria-controls="game-list" aria-selected="false">Multiplayer</button>
+        <button id="tab-coming-soon" class="tab-btn" aria-controls="game-list" aria-selected="false">Coming Soon</button>
+      </nav>
+    </aside>
+
+    <section id="content" class="content">
+      <div id="welcome" class="welcome">
+        <h2 class="welcome-title">Welcome to the arcade</h2>
+        <p class="welcome-text">Pick a game below, hit play, and dive into instant fun. No downloads, no logins, just games.</p>
+        <div class="welcome-badges">
+          <span class="pill">🎯 Instant play</span>
+          <span class="pill">🌗 Light & dark themes</span>
+          <span class="pill">📈 Saved high scores</span>
+        </div>
+        <p class="hint">Tip: You can bookmark games via the URL hash (e.g., #/game/snake).</p>
+      </div>
+
+      <!-- NEW: Recently Played row -->
+      <section id="recently-played-panel" class="recently-played-panel hidden" aria-label="Recently played games">
+        <h2 class="section-title">🕐 Recently Played</h2>
+        <ul id="recently-played-list" class="recently-played-list"></ul>
+      </section>
+
+      <section id="daily-panel" class="daily-panel" aria-label="Daily mini game">
+        <h2 class="section-title">Daily mini game</h2>
+        <div id="daily-card" class="daily-card"></div>
+      </section>
+
+      <section id="ai-panel" class="ai-panel" aria-label="AI game recommendations">
+        <h2 class="section-title">AI recommendations</h2>
+        <div class="ai-controls">
+          <input id="ai-mood" class="ai-input search" placeholder="Tell the AI your mood (fast, chill, 2-player...)" autocomplete="off" />
+          <button id="ai-suggest" class="button primary" type="button">Suggest a game</button>
+        </div>
+        <p id="ai-thinking" class="thinking hidden">Thinking about the best game for you...</p>
+        <ul id="ai-results" class="ai-results" aria-live="polite"></ul>
+      </section>
+
+      <section id="playbux-panel" class="playbux-panel" aria-label="Playbux and game passes">
+        <h2 class="section-title">Playbux &amp; game passes</h2>
+        <p class="playbux-text">Earn Playbux by winning games, staying in Play Box, and sending us your game ideas.</p>
+        <div class="playbux-row">
+          <span class="badge">Passes</span>
+          <button id="buy-revive-1" class="button" type="button">Free revive · 100 PB</button>
+          <button id="buy-revive-10" class="button" type="button">10 revives · 1000 PB</button>
+        </div>
+        <p id="revive-count" class="playbux-small"></p>
+        <div class="playbux-row">
+          <button id="claim-discord" class="button primary" type="button">Game idea (+50 PB)</button>
+        </div>
+      </section>
+
+      <h2 class="section-title">All games</h2>
+      <ul id="game-list" class="game-list" aria-label="Available games"></ul>
+
+      <div id="multi-panel" class="multi-panel hidden" aria-live="polite">
+        <h2>Multiplayer — Rock Paper Cut (Local)</h2>
+        <div id="multi-container"></div>
+      </div>
+
+      <div id="game-container" class="game-container hidden" role="main" aria-live="polite">
+        <!-- AI Recommendations sidebar (shown during gameplay) -->
+        <aside id="game-recommendations" class="game-recommendations hidden">
+          <h3>🤖 You might like</h3>
+          <div id="game-rec-list" class="game-rec-list"></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <span>Built with vanilla JS. No installs needed — just open this file.</span>
+    <br>
+    <span>Developed by Ayansh Batra</span>
+    <button id="reset-button" class="reset-button" type="button" title="Reset all saved data">Reset</button>
+    <button id="playbux-admin-button" class="reset-button" type="button" title="Set Playbux amount">PB+</button>
+    <button id="dev-reset-all" class="reset-button" type="button" title="Clear all localStorage data (Dev Tool)" style="background: #ef4444;">🔧 Reset Data</button>
+  </footer>
+  </div>
+
+  <div id="reset-confirm" class="reset-confirm hidden" aria-live="polite">
+    <p class="reset-text">Enter your secret reset code to clear all saved data.</p>
+    <input id="reset-input" class="reset-input" maxlength="6" autocomplete="off" />
+    <button id="reset-confirm-btn" class="button danger" type="button">Confirm reset</button>
+  </div>
+
+  <div id="playbux-admin" class="reset-confirm hidden" aria-live="polite">
+    <p class="reset-text">Enter your secret Playbux code and amount.</p>
+    <input id="playbux-code" class="reset-input" maxlength="6" autocomplete="off" placeholder="Code" />
+    <input id="playbux-amount" class="reset-input" type="number" min="0" step="1" placeholder="Playbux amount" />
+    <button id="playbux-apply" class="button" type="button">Apply Playbux</button>
+  </div>
+
+  <div id="dev-reset-confirm" class="reset-confirm hidden" aria-live="polite">
+    <p class="reset-text" style="color: #ef4444; font-weight: bold;">⚠️ WARNING: This will erase ALL data!</p>
+    <p class="reset-text">This will delete: tutorials, high scores, playbux, purchases, daily game progress, settings, and everything else.</p>
+    <p class="reset-text">Type "RESET" to confirm:</p>
+    <input id="dev-reset-input" class="reset-input" maxlength="10" autocomplete="off" placeholder="Type RESET" />
+    <div style="display: flex; gap: 10px; margin-top: 10px;">
+      <button id="dev-reset-confirm-btn" class="button danger" type="button">⚠️ Erase Everything</button>
+      <button id="dev-reset-cancel-btn" class="button" type="button">Cancel</button>
+    </div>
+  </div>
+
+  <div class="avatar-hud" aria-label="Player avatar">
+    <div class="avatar-box"></div>
+    <button id="avatar-power-btn" class="button avatar-btn" type="button">Power Up</button>
+  </div>
+
+  <!-- Play Mate shop trigger under avatar -->
+  <div class="playmate-shop-trigger">
+    <button id="playmate-shop-open" class="button" type="button">Buy a Play Mate</button>
+  </div>
+
+  <!-- Play Mate shop modal -->
+  <div id="playmate-shop" class="playmate-shop hidden" role="dialog" aria-modal="true" aria-labelledby="playmate-shop-title">
+    <div class="playmate-shop-backdrop"></div>
+    <div class="playmate-shop-panel">
+      <header class="playmate-shop-header">
+        <h2 id="playmate-shop-title">Play Mate Shop</h2>
+        <button id="playmate-shop-close" class="button" type="button">Close</button>
+      </header>
+      <nav class="playmate-tabs" aria-label="Play Mate categories">
+        <button class="playmate-tab-btn" data-tab="hats" aria-selected="true">Hats</button>
+        <button class="playmate-tab-btn" data-tab="mates" aria-selected="false">Play Mates</button>
+        <button class="playmate-tab-btn" data-tab="glasses" aria-selected="false">Glasses</button>
+      </nav>
+      <div class="playmate-shop-body">
+        <div id="playmate-tab-hats" class="playmate-tab-panel" aria-label="Hats"></div>
+        <div id="playmate-tab-mates" class="playmate-tab-panel hidden" aria-label="Play mates"></div>
+        <div id="playmate-tab-glasses" class="playmate-tab-panel hidden" aria-label="Glasses"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NEW: Game End Action Panel -->
+  <div id="game-end-panel" class="game-end-panel hidden">
+    <div class="game-end-content">
+      <h2 class="game-end-title">🎮 Game Over</h2>
+      <div class="game-end-actions">
+        <button id="play-again-btn" class="button primary">🔄 Play Again</button>
+        <button id="random-next-btn" class="button">🎲 Random Game</button>
+        <button id="back-hub-btn" class="button">🏠 Back to Hub</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- NEW: Session Summary Panel -->
+  <div id="session-summary" class="session-summary hidden">
+    <div class="session-summary-content">
+      <h2 class="session-summary-title">📊 Session Complete!</h2>
+      <div class="session-stats">
+        <div class="stat-item">
+          <div class="stat-icon">⏱️</div>
+          <div class="stat-label">Time Played</div>
+          <div class="stat-value" id="session-time">0m</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon">💰</div>
+          <div class="stat-label">Playbux Earned</div>
+          <div class="stat-value" id="session-playbux">0 PB</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-icon">🎮</div>
+          <div class="stat-label">Games Played</div>
+          <div class="stat-value" id="session-games">0</div>
+        </div>
+      </div>
+      <button id="session-close-btn" class="button primary">Continue Playing</button>
+    </div>
+  </div>
+
+  <!-- NEW: Toast notification container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
+

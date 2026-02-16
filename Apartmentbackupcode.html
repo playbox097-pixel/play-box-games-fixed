@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>PEEPHOLE - STATION 01</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; font-family: 'Courier New', Courier, monospace; }
+        body::after {
+            content: " ";
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, transparent 30%, rgba(0,0,0,0.7) 150%),
+                        linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.05) 50%),
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.02), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.02));
+            background-size: 100% 100%, 100% 4px, 4px 100%;
+            pointer-events: none;
+            z-index: 100;
+        }
+
+        #scare-flash { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: white; opacity: 0; pointer-events: none; z-index: 200; transition: opacity 0.06s; }
+        #start-screen { position: absolute; width: 100%; height: 100%; background: radial-gradient(circle at center, #1a0000 0%, #000000 100%); display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 110; color: white; overflow: hidden; }
+        #start-screen::before { content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: repeating-linear-gradient(0deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 1px, transparent 1px, transparent 2px); pointer-events: none; animation: scan 8s linear infinite; }
+
+        @keyframes scan { 0% { transform: translateY(0); } 100% { transform: translateY(100%); } }
+        @keyframes flicker { 0%, 100% { opacity: 1; } 50% { opacity: 0.8; } }
+        @keyframes glitch { 0%, 90%, 100% { transform: translate(0); } 92% { transform: translate(-2px, 2px); } 94% { transform: translate(2px, -2px); } 96% { transform: translate(-2px, -2px); } }
+
+        #title { font-size: 8rem; font-weight: 900; color: #ff0000; text-shadow: 0 0 20px #ff0000, 0 0 40px #ff0000, 0 0 60px #ff0000, 4px 4px 0px #000000; letter-spacing: 20px; margin-bottom: 20px; animation: flicker 3s infinite, glitch 5s infinite; }
+        #subtitle { font-size: 1.2rem; color: #888888; letter-spacing: 8px; margin-bottom: 60px; text-transform: uppercase; }
+        #warning { position: absolute; bottom: 100px; font-size: 0.9rem; color: #ff0000; letter-spacing: 2px; text-align: center; max-width: 600px; padding: 0 20px; animation: flicker 2s infinite; }
+        #start-button { padding: 20px 50px; background: transparent; border: 3px solid #ff0000; color: #ff0000; font-size: 1.5rem; cursor: pointer; text-transform: uppercase; letter-spacing: 4px; font-weight: 900; transition: 0.3s; box-shadow: 0 0 20px rgba(255,0,0,0.3); }
+        #start-button:hover { background: #ff0000; color: black; box-shadow: 0 0 50px #ff0000; transform: scale(1.05); }
+
+        #ui { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); color: #00ffea; text-align: center; pointer-events: none; z-index: 10; display: none; width: 80%; }
+        #aura-text { font-size: 1.1rem; text-transform: uppercase; letter-spacing: 2px; margin: 0; text-shadow: 0 0 10px #00ffea; background: rgba(0,0,0,0.8); padding: 15px; border: 1px solid #00ffea; min-height: 1.5em; }
+
+        #interaction-prompt { position: absolute; top: 60%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1rem; text-transform: uppercase; letter-spacing: 2px; font-weight: bold; pointer-events: none; text-shadow: 2px 2px 4px #000; display: none; z-index: 20; }
+        #hud { position: absolute; top: 20px; right: 20px; display: none; text-align: right; color: #00ffea; }
+        #battery-ui-container { display: none; margin-top: 10px; }
+        #battery-ui { width: 200px; height: 15px; border: 2px solid #00ffea; background: rgba(0,0,0,0.5); }
+        #battery-bar { width: 100%; height: 100%; background: #00ffea; transition: width 0.1s; }
+        /* health bar */
+        #health-ui-container { display: none; margin-top: 8px; }
+        #health-ui { width: 200px; height: 12px; border: 2px solid #ff3333; background: rgba(0,0,0,0.5); }
+        #health-bar { width: 100%; height: 100%; background: linear-gradient(#ff6b6b,#b20000); transition: width 0.12s; }
+
+        #paper-overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 320px; background: #fdfdfd; padding: 30px; border: 5px solid #222; color: #111; display: none; z-index: 50; box-shadow: 0 0 50px rgba(0,0,0,0.9); pointer-events: none; }
+        #crosshair { position: absolute; top: 50%; left: 50%; width: 6px; height: 6px; border: 1px solid white; border-radius: 50%; transform: translate(-50%, -50%); z-index: 5; display: none; }
+
+        #game-over {
+            position: absolute;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            z-index: 1000;
+            pointer-events: none;
+        }
+        #game-over .bg {
+            position: absolute; inset: 0; background: rgba(140,0,0,0.95);
+            filter: contrast(1.2) saturate(1.2) blur(0.5px);
+        }
+        #game-over h1 {
+            color: #ff0000;
+            font-size: 8rem;
+            font-weight: 900;
+            letter-spacing: 8px;
+            margin: 0;
+            padding: 0;
+            z-index: 1001;
+            text-transform: uppercase;
+            text-shadow: 0 0 40px rgba(255,0,0,0.95), 0 0 10px rgba(0,0,0,0.9);
+            transform: translateZ(0);
+            pointer-events: none;
+            mix-blend-mode: screen;
+        }
+        #game-over p {
+            color: #fff;
+            margin-top: 1.5rem;
+            font-size: 2rem;
+            z-index: 1002;
+            text-transform: uppercase;
+            letter-spacing: 6px;
+            text-shadow: 0 0 20px rgba(255,0,0,0.8);
+        }
+        #game-over .bottom {
+            position: absolute; bottom: 40px; width: 100%; text-align: center; z-index: 1003;
+            color: #ffdddd; font-weight: 900; letter-spacing: 4px; font-size: 1.6rem;
+        }
+        @keyframes overlayGlitch {
+            0% { transform: translateX(0); }
+            10% { transform: translateX(-12px); }
+            20% { transform: translateX(8px); }
+            30% { transform: translateX(-6px); }
+            40% { transform: translateX(6px); }
+            50% { transform: translateX(-3px); }
+            60% { transform: translateX(3px); }
+            100% { transform: translateX(0); }
+        }
+        #game-over.show h1 { animation: overlayGlitch 600ms infinite linear; }
+    </style>
+</head>
+<body>
+
+    <div id="scare-flash"></div>
+    <div id="start-screen">
+        <h1 id="title">PEEPHOLE</h1>
+        <p id="subtitle">STATION 01</p>
+        <button id="start-button">START SHIFT</button>
+        <p id="warning">⚠ WARNING: HEADPHONES RECOMMENDED • CONTAINS JUMP SCARES ⚠</p>
+    </div>
+
+    <div id="hud">
+        CELLS: <span id="bat-count">0</span> / 4 (Required)
+        <div id="battery-ui-container">
+            <div style="font-size: 0.7rem; margin-bottom: 2px;">FLASHLIGHT POWER</div>
+            <div id="battery-ui"><div id="battery-bar"></div></div>
+        </div>
+        <div id="health-ui-container">
+            <div style="font-size: 0.7rem; margin-bottom: 2px; color: #ffb3b3;">VITALS</div>
+            <div id="health-ui"><div id="health-bar"></div></div>
+        </div>
+    </div>
+
+    <div id="paper-overlay"><h2>STATION LOG: 01</h2><p>[W,A,S,D] - MOVE</p><p>[E] - INTERACT</p><p>[P] - PICK UP CELL / KEY</p><p>[F] - FLASHLIGHT</p></div>
+    <div id="interaction-prompt"></div>
+    <div id="ui"><h2 id="aura-text">AURA: CONNECTING...</h2></div>
+    <div id="crosshair"></div>
+
+    <div id="game-over">
+        <div class="bg"></div>
+        <h1>GAME OVER</h1>
+        <p id="game-over-sub">SYSTEM FAILURE</p>
+        <div class="bottom">SHADOW GOT YOU</div>
+    </div>
+
+    <script type="importmap"> { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } } </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { PointerLockControls } from 'https://unpkg.com/three@0.160.0/examples/jsm/controls/PointerLockControls.js';
+
+        const CONFIG = {
+            PLAYER_SPEED: 0.08,
+            ROOM_BOUNDARY: 4.7,
+            POWER_ROOM_BOUNDARY: 10.7,
+            POWER_ROOM_DEPTH: 2.7,
+            FLASHLIGHT_DRAIN: 0.03,
+            INTERACTION_DISTANCE: 3,
+            DESK_COLLISION_Z: 4.2,
+            DESK_COLLISION_WIDTH: 1.5,
+            WALK_BOB_SPEED: 0.15,
+            WALK_BOB_AMOUNT: 0.05,
+            BLIND_CLOSE_SPEED: 0.0005,
+            BLOOD_DRIP_SPEED: 0.002,
+            STARE_TRIGGER_TIME: 3.0,
+            POWER_OUTAGE_DELAY: 10000,
+            GRAVITY: 0.12,
+            DROPLET_SPAWN_INTERVAL: 120,
+            DROPLET_START_Y: 2.1,
+            DROPLET_MIN_VY: -0.6,
+            DROPLET_MAX_VY: -1.2,
+            FLOOR_Y: -2.45
+        };
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 0, 0);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new PointerLockControls(camera, document.body);
+        const moveKeys = { w: false, a: false, s: false, d: false };
+
+        const gameState = {
+            player: { batteryCount: 0, flashlightPower: 100, flashLightOn: false, health: 100 },
+            world: { powerOn: true, isOutage: false, wiresFixed: false, powerDoorOpen: false, entranceOpen: false, tvOn: false, blindsOpen: true, bloodVisible: false, monitorFeeds: [0,0,0,0].map(()=>({noise:0,glitch:false,alert:false,alertTimer:0})) },
+            events: { noteRead:false, flashlightTested:false, scareTriggered:false, alarmPlaying:false, bloodCleaned:false, hasMop:false, hasKey:false, shadowAttacking:false, gameOver:false },
+            animation: { blindSlats:[], walkCycle:0, stareTimer:0, dripScale:0, droplets:[], fallingDroplets:[], dropletSpawnCounter:0 },
+            timers: { outageTimeout:null, auraMessageTimer:0, auraMessageIndex:0, bloodTimer:0, breathTimer:0, shadowTimeout: null },
+            auraMessages: ["AURA: CONNECTING...","AURA: SYSTEM ONLINE. MONITORING STATION 01.","AURA: CHECK THE LOG NOTE ON YOUR BED FOR INSTRUCTIONS.","AURA: COLLECT 4 ENERGY CELLS TO POWER FLASHLIGHT.","AURA: UNIDENTIFIED MOVEMENT DETECTED OUTSIDE.","AURA: KEEP MONITORING SECURITY FEEDS.","AURA: MAINTAIN VIGILANCE. STAY ALERT.","AURA: SOMETHING IS WATCHING...","AURA: DO NOT LEAVE YOUR POST.","AURA: POWER LEVELS FLUCTUATING...","AURA: REMEMBER - YOU ARE NOT ALONE HERE."]
+        };
+
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+        function playScareSound() {
+            const now = audioCtx.currentTime;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(220, now);
+            osc.frequency.exponentialRampToValueAtTime(30, now + 0.6);
+            gain.gain.setValueAtTime(0.7, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+            const bass = audioCtx.createOscillator();
+            bass.type = 'sine';
+            bass.frequency.setValueAtTime(40, now);
+            const bassGain = audioCtx.createGain();
+            bassGain.gain.setValueAtTime(0.0, now);
+            bassGain.gain.linearRampToValueAtTime(0.9, now + 0.06);
+            bassGain.gain.exponentialRampToValueAtTime(0.01, now + 1.0);
+
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            bass.connect(bassGain); bassGain.connect(audioCtx.destination);
+            osc.start(now); osc.stop(now + 1.0);
+            bass.start(now); bass.stop(now + 1.2);
+        }
+
+        function playAlarmSound() {
+            if(gameState.events.alarmPlaying) return;
+            gameState.events.alarmPlaying = true;
+            const now = audioCtx.currentTime;
+            const o = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            o.type = 'square';
+            o.frequency.setValueAtTime(800, now);
+            o.frequency.setValueAtTime(600, now + 0.3);
+            o.frequency.setValueAtTime(800, now + 0.6);
+            g.gain.setValueAtTime(0.3, now);
+            g.gain.exponentialRampToValueAtTime(0.01, now + 0.9);
+            o.connect(g); g.connect(audioCtx.destination);
+            o.start(now); o.stop(now + 0.9);
+            setTimeout(()=>{ gameState.events.alarmPlaying=false; if(gameState.world.isOutage) playAlarmSound(); }, 1000);
+        }
+
+        document.getElementById('start-button').onclick = () => {
+            controls.lock();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        };
+        controls.addEventListener('lock', () => {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('ui').style.display = 'block';
+            document.getElementById('hud').style.display = 'block';
+            document.getElementById('crosshair').style.display = 'block';
+            document.getElementById('aura-text').innerText = gameState.auraMessages[0];
+            gameState.timers.auraMessageTimer = 0;
+            camera.position.set(0, 0.2, 0);
+            // init UI bars
+            const hb = document.getElementById('health-bar'); if (hb) hb.style.width = gameState.player.health + '%';
+            if(gameState.player.batteryCount >= 4) document.getElementById('battery-ui-container').style.display = 'block';
+            if(gameState.world.entranceOpen) document.getElementById('health-ui-container').style.display = 'block';
+            else document.getElementById('health-ui-container').style.display = 'block';
+        });
+        controls.addEventListener('unlock', () => { document.getElementById('crosshair').style.display = 'none'; });
+
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
+        const room = new THREE.Mesh(new THREE.BoxGeometry(10,5,10), wallMat);
+        room.material.side = THREE.BackSide;
+        scene.add(room);
+
+        const powerRoom = new THREE.Mesh(new THREE.BoxGeometry(6,4,6), new THREE.MeshStandardMaterial({color:0x151515}));
+        powerRoom.position.set(8, -0.5, 0); powerRoom.material.side = THREE.BackSide; scene.add(powerRoom);
+
+        (function createRealisticBlood() {
+            const texSize = 512;
+            function createBloodTexture(size) {
+                const c = document.createElement('canvas');
+                c.width = c.height = size;
+                const ctx = c.getContext('2d'); ctx.clearRect(0,0,size,size);
+                const grad = ctx.createLinearGradient(size*0.2, size*0.1, size*0.8, size*0.9);
+                grad.addColorStop(0, 'rgba(120,0,0,0.95)'); grad.addColorStop(0.6, 'rgba(200,0,0,0.98)'); grad.addColorStop(1, 'rgba(80,0,0,0.9)');
+                ctx.fillStyle = grad; ctx.beginPath(); ctx.ellipse(size*0.5, size*0.45, size*0.42, size*0.28, -0.3, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = 'rgba(160,0,0,0.95)';
+                for (let i=0;i<8;i++){ const x = size*(0.35 + Math.random()*0.3); const y = size*(0.6 + Math.random()*0.2); const r = size*(0.02 + Math.random()*0.05);
+                    ctx.beginPath(); ctx.ellipse(x, y, r*(0.8+Math.random()), r*(1.6+Math.random()), Math.random()*0.6, 0, Math.PI*2); ctx.fill();
+                    ctx.fillRect(x - r*0.09, y, r*0.18, size*(0.06 + Math.random()*0.06));
+                }
+                for (let i=0;i<1500;i++){ ctx.fillStyle = `rgba(${60 + Math.floor(Math.random()*120)},0,0,${0.02+Math.random()*0.05})`; ctx.fillRect(Math.random()*size, Math.random()*size, 1,1); }
+                return new THREE.CanvasTexture(c);
+            }
+            function createBumpTexture(size) {
+                const c = document.createElement('canvas'); c.width = c.height = size; const ctx = c.getContext('2d'); ctx.clearRect(0,0,size,size);
+                const g = ctx.createRadialGradient(size/2, size/2, 5, size/2, size/2, size/1.6);
+                g.addColorStop(0, 'rgba(255,255,255,0.9)'); g.addColorStop(1, 'rgba(0,0,0,0.15)'); ctx.fillStyle = g; ctx.fillRect(0,0,size,size);
+                ctx.strokeStyle = 'rgba(255,255,255,0.04)'; ctx.lineWidth = 2;
+                for (let i=0;i<10;i++){ ctx.beginPath(); const x = size*(0.3 + Math.random()*0.4); ctx.moveTo(x, size*0.12); ctx.lineTo(x + (Math.random()-0.5)*40, size*0.88); ctx.stroke(); }
+                return new THREE.CanvasTexture(c);
+            }
+            const bloodMap = createBloodTexture(texSize);
+            const bumpMap = createBumpTexture(texSize);
+            const bloodMaterial = new THREE.MeshPhysicalMaterial({ map: bloodMap, alphaMap: bloodMap, transparent: true, roughness: 0.22, metalness: 0.0, clearcoat: 1.0, clearcoatRoughness: 0.05, reflectivity: 0.6, bumpMap: bumpMap, bumpScale: 0.12, side: THREE.DoubleSide, depthWrite: false });
+            const bg = new THREE.Group();
+            const wb = new THREE.Mesh(new THREE.PlaneGeometry(1,2.5,8,8), bloodMaterial.clone()); wb.position.set(4.88, -0.5, -1.5); wb.rotation.y = -Math.PI/2; wb.name = "blood_wall"; bg.add(wb);
+            const fb = new THREE.Mesh(new THREE.CircleGeometry(0.65, 32), bloodMaterial.clone()); fb.rotation.x = -Math.PI/2; fb.position.set(4.5, -2.495, -1.5); fb.name = "blood"; bg.add(fb);
+
+            const puddleDrops = [];
+            for (let i=0;i<10;i++){
+                const g = new THREE.SphereGeometry(0.06 + Math.random()*0.05, 12, 10);
+                const m = new THREE.MeshPhysicalMaterial({ color: 0x6b0000, roughness: 0.12, metalness: 0, clearcoat:1, clearcoatRoughness:0.03, reflectivity:0.6, transparent:true, opacity:0.0 });
+                const drop = new THREE.Mesh(g, m); drop.scale.y = 0.35;
+                const angle = Math.random()*Math.PI*2; const radius = 0.15 + Math.random()*0.6;
+                drop.position.set(4.5 + Math.cos(angle)*radius, -2.45, -1.5 + Math.sin(angle)*radius);
+                bg.add(drop); puddleDrops.push(drop);
+            }
+
+            bg.visible = false; scene.add(bg);
+            window.__blood = { group:bg, wall:wb, floor:fb, puddleDrops };
+            gameState.animation.droplets = puddleDrops;
+            window.__wallBlood = wb; window.__floorBlood = fb;
+
+            window.__fallingDroplets = [];
+            for (let i=0;i<16;i++){
+                const g = new THREE.SphereGeometry(0.04, 8, 8);
+                const m = new THREE.MeshStandardMaterial({ color:0x5b0000, roughness:0.15, metalness:0, transparent:true, opacity:1 });
+                const d = new THREE.Mesh(g,m);
+                d.visible = false;
+                scene.add(d);
+                window.__fallingDroplets.push({ mesh: d, vel: new THREE.Vector3(0,0,0), active:false });
+            }
+        })();
+
+        const bloodGroup = window.__blood ? window.__blood.group : new THREE.Group();
+        const wallBlood = window.__wallBlood || bloodGroup.children.find(c=>c.name && c.name.includes('wall'));
+        const floorBlood = window.__floorBlood || bloodGroup.children.find(c=>c.name === 'blood');
+
+        const windowGroup = new THREE.Group();
+        const glass = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 2.2), new THREE.MeshStandardMaterial({color: 0x050510, metalness: 0.9, roughness: 0.1, transparent: true, opacity: 0.8}));
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.4, 3.4), new THREE.MeshStandardMaterial({color: 0x111111}));
+        windowGroup.add(glass, frame); glass.rotation.y = Math.PI / 2; glass.position.x = -0.01; windowGroup.position.set(-5, 0.5, 0); scene.add(windowGroup);
+
+        const entryDoor = new THREE.Mesh(new THREE.BoxGeometry(1.5,3.5,0.2), new THREE.MeshStandardMaterial({color:0x111111})); entryDoor.position.set(0, -0.75, 4.9); entryDoor.name = "entry_door"; entryDoor.userData = entryDoor.userData || {}; entryDoor.userData.locked = true; scene.add(entryDoor);
+        const powerDoor = new THREE.Mesh(new THREE.BoxGeometry(0.2,3.5,1.5), new THREE.MeshStandardMaterial({color:0x222222})); powerDoor.position.set(4.9, -0.75, 0); powerDoor.name = "power_door"; scene.add(powerDoor);
+        const desk = new THREE.Mesh(new THREE.BoxGeometry(3,1.2,1.5), new THREE.MeshStandardMaterial({color:0x1a1a1a})); desk.position.set(0, -1.9, -4.2); scene.add(desk);
+        const securityDesk = new THREE.Mesh(new THREE.BoxGeometry(2,1.2,1.2), new THREE.MeshStandardMaterial({color:0x1a1a1a})); securityDesk.position.set(-3, -1.9, -4); scene.add(securityDesk);
+
+        const monitorGroup = new THREE.Group();
+        const monitorBase = new THREE.Mesh(new THREE.BoxGeometry(1.2,0.8,0.5), new THREE.MeshStandardMaterial({color:0x0a0a0a}));
+        const monitorScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.1,0.75), new THREE.MeshBasicMaterial({color:0x001a00}));
+        monitorScreen.position.z = 0.26;
+        monitorGroup.add(monitorBase, monitorScreen);
+        const feeds = []; const feedLabels = ['WINDOW','ENTRANCE','POWER ROOM','BACK'];
+        for(let i=0;i<4;i++){
+            const feed = new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.33), new THREE.MeshBasicMaterial({color:0x004400}));
+            const row = Math.floor(i/2); const col = i%2;
+            feed.position.set(-0.27 + col*0.54, 0.19 - row*0.37, 0.27); feeds.push(feed); monitorGroup.add(feed);
+            const canvas = document.createElement('canvas'); canvas.width=256; canvas.height=128;
+            const ctx = canvas.getContext('2d'); ctx.fillStyle='#003300'; ctx.fillRect(0,0,256,128); ctx.fillStyle='#00ff00'; ctx.font='bold 20px Courier New'; ctx.textAlign='left'; ctx.fillText(feedLabels[i],5,25);
+            const labelTexture = new THREE.CanvasTexture(canvas);
+            const label = new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.08), new THREE.MeshBasicMaterial({map:labelTexture, transparent:true}));
+            label.position.set(-0.27 + col*0.54, 0.35 - row*0.37, 0.28); monitorGroup.add(label);
+        }
+        const screenLight = new THREE.PointLight(0x00ff00, 2, 3); screenLight.position.set(0,0,0.5); monitorGroup.add(screenLight);
+        monitorGroup.position.set(-3, -1.1, -4); monitorGroup.rotation.y = Math.PI/8; monitorGroup.name = "security_monitor"; scene.add(monitorGroup);
+
+        const bed = new THREE.Mesh(new THREE.BoxGeometry(2.5,0.6,4.5), new THREE.MeshStandardMaterial({color:0x111111})); bed.position.set(-3.5, -2.2, -2.5); scene.add(bed);
+        const pillow = new THREE.Mesh(new THREE.BoxGeometry(1.2,0.2,0.8), new THREE.MeshStandardMaterial({color:0xffffff})); pillow.position.set(-3.5, -1.8, -4.1); scene.add(pillow);
+        const note = new THREE.Mesh(new THREE.PlaneGeometry(0.5,0.7), new THREE.MeshBasicMaterial({color:0xffffff, side: THREE.DoubleSide})); note.position.set(-3.5, -1.89, -2.5); note.rotation.x = -Math.PI/2; note.name = "log_paper"; scene.add(note);
+
+        // hallway (hidden until entrance unlocked) - larger offset + depthWrite disabled to remove z-fighting
+        const hallwayGroup = new THREE.Group();
+        const hallWidth = 2.4;
+        const hallLength = 6.0;
+        // increase offset to ensure hallway geometry sits in front of room interior faces
+        const hallZ = CONFIG.ROOM_BOUNDARY + (hallLength / 2) + 0.12;
+        const hallFloorMat = new THREE.MeshStandardMaterial({ color: 0x1b1b1b });
+        const hallFloor = new THREE.Mesh(new THREE.PlaneGeometry(hallWidth, hallLength, 2, 2), hallFloorMat);
+        hallFloor.rotation.x = -Math.PI/2;
+        hallFloor.position.set(0, CONFIG.FLOOR_Y + 0.01, hallZ);
+        hallFloor.receiveShadow = true;
+        hallwayGroup.add(hallFloor);
+        // wall material tuned to avoid z-fighting: double-sided, no depth write and polygon offset
+        const hallWallMat = new THREE.MeshStandardMaterial({
+            color: 0x0f0f0f,
+            side: THREE.DoubleSide,
+            depthWrite: false,
+            polygonOffset: true,
+            polygonOffsetFactor: 1,
+            polygonOffsetUnits: 4
+        });
+        // slightly shorten walls and nudge X/Z so they don't overlap room faces
+        const wallLength = Math.max(0.01, hallLength - 0.08);
+        const wallThickness = 0.22;
+        const leftWall = new THREE.Mesh(new THREE.BoxGeometry(wallThickness, 3.2, wallLength), hallWallMat);
+        leftWall.position.set(-hallWidth/2 - 0.02, 0.6, hallZ - 0.02);
+        leftWall.castShadow = true;
+        const rightWall = leftWall.clone();
+        rightWall.position.set(hallWidth/2 + 0.02, 0.6, hallZ - 0.02);
+        hallwayGroup.add(leftWall, rightWall);
+        const hallLight = new THREE.PointLight(0xfff6d8, 0.6, 8);
+        hallLight.position.set(0, 1.4, hallZ);
+        hallwayGroup.add(hallLight);
+        hallwayGroup.visible = false;
+        scene.add(hallwayGroup);
+        window.__hallway = hallwayGroup;
+
+        // hidden key (placed in power room center on floor)
+        (function createEntranceKey(){
+            const keyGroup = new THREE.Group();
+            const shaft = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.5), new THREE.MeshStandardMaterial({ color: 0xD4AF37, metalness:0.8, roughness:0.2 }));
+            const head = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.03, 8, 16), new THREE.MeshStandardMaterial({ color: 0xD4AF37, metalness:0.8, roughness:0.2 }));
+            shaft.name = "entrance_key"; head.name = "entrance_key";
+            head.rotation.x = Math.PI/2; head.position.set(-0.22, 0.0, 0.18);
+            shaft.position.set(0, -0.02, 0.0);
+            keyGroup.add(shaft, head);
+            keyGroup.name = "entrance_key";
+            // place key in center of the power room on the floor
+            keyGroup.position.set(8, CONFIG.FLOOR_Y + 0.05, 0); // power room center
+            keyGroup.scale.set(1,1,1);
+            scene.add(keyGroup);
+        })();
+
+        const mopGroup = new THREE.Group();
+        const mopHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,1.8), new THREE.MeshStandardMaterial({color:0x8b4513}));
+        const mopHead = new THREE.Mesh(new THREE.CylinderGeometry(0.15,0.1,0.3), new THREE.MeshStandardMaterial({color:0xcccccc}));
+        mopHead.position.y = -0.9; mopGroup.add(mopHandle,mopHead); mopGroup.position.set(4.5, -1.6, 4.5); mopGroup.rotation.z = Math.PI/6; mopGroup.name = "mop"; mopHandle.name = "mop"; mopHead.name = "mop"; scene.add(mopGroup);
+
+        const tvGroup = new THREE.Group();
+        const tvBody = new THREE.Mesh(new THREE.BoxGeometry(1.2,0.9,0.5), new THREE.MeshStandardMaterial({color:0x050505}));
+        const tvScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.05,0.75), new THREE.MeshBasicMaterial({color:0x000000})); tvScreen.position.z = 0.26; tvScreen.name = "tv_screen";
+        const tvBtn = new THREE.Mesh(new THREE.BoxGeometry(0.1,0.1,0.1), new THREE.MeshStandardMaterial({color:0xff0000})); tvBtn.position.set(0.4, -0.3, 0.26); tvBtn.name = "tv_button";
+        tvGroup.add(tvBody, tvScreen, tvBtn); tvGroup.position.set(0, -0.85, -4.2); scene.add(tvGroup);
+
+        const blindGroup = new THREE.Group(); const openRot = -Math.PI/2.5;
+        for(let i=0;i<16;i++){ const slat = new THREE.Mesh(new THREE.BoxGeometry(3.1,0.12,0.05), new THREE.MeshStandardMaterial({color:0x222222})); slat.position.y = 1.4 - (i*0.13); slat.rotation.x = openRot; slat.name = "blinds"; gameState.animation.blindSlats.push(slat); blindGroup.add(slat); }
+        blindGroup.position.set(-4.85, 0.5, 0); blindGroup.rotation.y = Math.PI/2; scene.add(blindGroup);
+
+        // lighter shadow (dark gray, slightly translucent)
+        const shadowMaterial = new THREE.MeshBasicMaterial({ color: 0x222222, transparent: true, opacity: 0.92 });
+        const shadowFigure = new THREE.Mesh(new THREE.CapsuleGeometry(0.6, 2.4, 8, 12), shadowMaterial);
+        shadowFigure.position.set(-8, -1.2, 0); shadowFigure.visible = false; shadowFigure.scale.set(1,1,1); scene.add(shadowFigure);
+
+        const wires = new THREE.Mesh(new THREE.BoxGeometry(0.1,0.5,0.8), new THREE.MeshStandardMaterial({color:0x444400})); wires.position.set(10.9, -0.5, -1); wires.name = "damaged_wires"; scene.add(wires);
+        const lever = new THREE.Mesh(new THREE.CylinderGeometry(0.02,0.02,0.4), new THREE.MeshStandardMaterial({color:0xaa0000})); lever.position.set(10.8, 0, 1); lever.rotation.z = Math.PI/3; lever.name = "power_lever"; scene.add(lever);
+
+        const ceilingLight = new THREE.PointLight(0xffffff, 40, 15); ceilingLight.position.set(0,2.3,0); scene.add(ceilingLight);
+        const flashLight = new THREE.SpotLight(0xffffff, 0, 25, Math.PI/6, 0.5); scene.add(flashLight); scene.add(flashLight.target);
+
+        for(let i=0;i<8;i++){ const cell = new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.1), new THREE.MeshStandardMaterial({color:0x00ff00, emissive:0x00ff00})); cell.position.set(Math.random()*8-4, -2.45, Math.random()*8-4); cell.name = "energy_cell"; scene.add(cell); }
+
+        function isValidPosition(pos) {
+            const inMainRoom = Math.abs(pos.x) <= CONFIG.ROOM_BOUNDARY && Math.abs(pos.z) <= CONFIG.ROOM_BOUNDARY;
+            const notAtDesk = !(Math.abs(pos.z + CONFIG.DESK_COLLISION_Z) < 1.0 && Math.abs(pos.x) < CONFIG.DESK_COLLISION_WIDTH);
+            const powerDoorAllowed = pos.x > CONFIG.ROOM_BOUNDARY && Math.abs(pos.z) < 0.7 && gameState.world.powerDoorOpen;
+            if (inMainRoom && notAtDesk) return true;
+            if (powerDoorAllowed) {
+                const inPowerRoom = pos.x <= CONFIG.POWER_ROOM_BOUNDARY && Math.abs(pos.z) <= CONFIG.POWER_ROOM_DEPTH;
+                return inPowerRoom;
+            }
+            // allow the hallway area if entrance has been unlocked/opened
+            if (gameState.world.entranceOpen) {
+                const hallStartZ = CONFIG.ROOM_BOUNDARY;
+                const hallEndZ = CONFIG.ROOM_BOUNDARY + hallLength;
+                const inHallway = pos.z >= hallStartZ && pos.z <= hallEndZ && Math.abs(pos.x) <= (hallWidth/2 + 0.1);
+                if (inHallway) return true;
+            }
+            return false;
+        }
+
+        function spawnDroplet() {
+            const pool = window.__fallingDroplets;
+            if (!pool) return;
+            const entry = pool.find(d => !d.active);
+            if (!entry) return;
+            entry.active = true;
+            entry.mesh.visible = true;
+            const spawnX = 4.78 + (Math.random()-0.5)*0.04;
+            const spawnZ = -1.5 + (Math.random()-0.5)*0.2;
+            entry.mesh.position.set(spawnX, CONFIG.DROPLET_START_Y + Math.random()*0.15, spawnZ);
+            entry.vel.set(0, - (CONFIG.DROPLET_MIN_VY + Math.random()*(CONFIG.DROPLET_MAX_VY - CONFIG.DROPLET_MIN_VY)), 0);
+        }
+
+        function triggerShadowAttack() {
+            if (gameState.events.shadowAttacking || gameState.events.gameOver) return;
+            gameState.events.shadowAttacking = true;
+            gameState.events.scareTriggered = true;
+            playScareSound();
+
+            shadowFigure.visible = true;
+            shadowFigure.scale.set(1.8,1.8,1.8);
+            shadowFigure.position.set(-6.5, -1.6, 0);
+
+            const flash = document.getElementById('scare-flash');
+            flash.style.transition = 'opacity 0.02s';
+            flash.style.background = 'red';
+            flash.style.opacity = '1';
+            setTimeout(()=>{ flash.style.opacity = '0'; flash.style.background = 'black'; flash.style.transition = 'opacity 0.1s'; }, 220);
+
+            try { controls.unlock(); } catch(e) {}
+
+            gameState.shadow = { startTime: performance.now(), duration: 2500, reached:false };
+        }
+
+        function endGameOver() {
+            gameState.events.gameOver = true;
+            gameState.events.shadowAttacking = false;
+            // set health to zero on game over and update UI
+            gameState.player.health = 0;
+            const hb = document.getElementById('health-bar'); if (hb) hb.style.width = '0%';
+            const go = document.getElementById('game-over');
+            go.style.display = 'flex';
+            go.classList.add('show');
+            document.getElementById('game-over-sub').innerText = 'SHADOW';
+            playScareSound();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (gameState.events.gameOver) return;
+            const k = e.key.toLowerCase();
+            if(k in moveKeys) moveKeys[k] = true;
+
+            const ray = new THREE.Raycaster();
+            ray.setFromCamera(new THREE.Vector2(), camera);
+            const hits = ray.intersectObjects(scene.children, true);
+            const target = (hits.length>0 && hits[0].distance < CONFIG.INTERACTION_DISTANCE) ? hits[0].object : null;
+
+            if(k === 'e' && target) {
+                if(target.name === "log_paper") {
+                    const overlay = document.getElementById('paper-overlay');
+                    overlay.style.display = (overlay.style.display === 'block') ? 'none' : 'block';
+                    if(!gameState.events.noteRead && overlay.style.display === 'block') gameState.events.noteRead = true;
+                }
+                if(target.name === "entry_door") {
+                    if(target.userData && target.userData.locked) {
+                        if(gameState.events.hasKey) {
+                            // unlock and open the entrance — reveal hallway
+                            target.userData.locked = false;
+                            target.userData.open = true;
+                            target.rotation.y = Math.PI/2;
+                            target.position.set(0.75, -0.75, 4.9);
+                            gameState.world.entranceOpen = true;
+                            if(window.__hallway) window.__hallway.visible = true;
+                            document.getElementById('aura-text').innerText = "AURA: ENTRANCE UNLOCKED. HALLWAY REVEALED.";
+                        } else {
+                            document.getElementById('aura-text').innerText = "AURA: DOOR IS LOCKED. FIND THE KEY.";
+                        }
+                    } else {
+                        target.rotation.y = Math.PI/2;
+                    }
+                }
+                if(target.name === "blinds") {
+                    gameState.world.blindsOpen = !gameState.world.blindsOpen;
+                    gameState.animation.blindSlats.forEach(s => s.rotation.x = gameState.world.blindsOpen ? openRot : 0);
+                }
+                if(target.name === "power_door" && gameState.world.isOutage) {
+                    gameState.world.powerDoorOpen = !gameState.world.powerDoorOpen;
+                    target.position.z = gameState.world.powerDoorOpen ? 1.6 : 0;
+                }
+                if(target.name === "damaged_wires" && gameState.world.isOutage) {
+                    gameState.world.wiresFixed = true;
+                    target.material.color.set(0x00ff00);
+                    gameState.world.bloodVisible = true;
+                    gameState.timers.bloodTimer = 0;
+                }
+                if(target.name === "power_lever" && gameState.world.wiresFixed) {
+                    lever.rotation.z = -Math.PI/3;
+                    gameState.world.powerOn = true;
+                    gameState.world.isOutage = false;
+                    ceilingLight.intensity = 40;
+                    shadowFigure.visible = false;
+                    gameState.events.alarmPlaying = false;
+                    // cancel any pending shadow attack when power is restored
+                    if (gameState.timers.shadowTimeout) { clearTimeout(gameState.timers.shadowTimeout); gameState.timers.shadowTimeout = null; }
+                }
+                if(target.name === "mop" && !gameState.events.hasMop) {
+                    gameState.events.hasMop = true; scene.remove(mopGroup);
+                }
+                if(target.name === "blood" && gameState.events.hasMop && !gameState.events.bloodCleaned) {
+                    gameState.events.bloodCleaned = true; gameState.events.hasMop = false;
+                    let fadeOut = 0;
+                    const fadeInterval = setInterval(() => {
+                        fadeOut += 0.05;
+                        bloodGroup.children.forEach(mesh => { if (mesh.material) { mesh.material.opacity = Math.max(0, (mesh.material.opacity || 1) - 0.05); mesh.material.transparent = true; } });
+                        if(fadeOut >= 1) { bloodGroup.visible = false; clearInterval(fadeInterval); }
+                    }, 50);
+                }
+            }
+
+            if(k === 'p' && target && target.name === "energy_cell") {
+                gameState.player.batteryCount++;
+                if (target.geometry) target.geometry.dispose();
+                if (target.material) {
+                    if (Array.isArray(target.material)) target.material.forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+                    else { if (target.material.map) target.material.map.dispose(); target.material.dispose(); }
+                }
+                scene.remove(target);
+                document.getElementById('bat-count').innerText = gameState.player.batteryCount;
+                if(gameState.player.batteryCount >= 4) document.getElementById('battery-ui-container').style.display = 'block';
+            }
+            else if(k === 'p' && target && target.name === "entrance_key") {
+                gameState.events.hasKey = true;
+                // remove whole group if parent is group
+                const parent = target.parent;
+                if (parent && parent.name === 'entrance_key') scene.remove(parent);
+                else scene.remove(target);
+                document.getElementById('aura-text').innerText = "AURA: KEY ACQUIRED. USE IT ON THE ENTRANCE.";
+            }
+
+            if(k === 'f' && gameState.player.batteryCount >= 4) {
+                gameState.player.flashLightOn = !gameState.player.flashLightOn;
+                if(!gameState.events.flashlightTested && gameState.player.flashLightOn) {
+                    gameState.events.flashlightTested = true;
+                    if(gameState.timers.outageTimeout) clearTimeout(gameState.timers.outageTimeout);
+                    // schedule outage
+                    gameState.timers.outageTimeout = setTimeout(() => {
+                        gameState.world.powerOn = false;
+                        gameState.world.isOutage = true;
+                        ceilingLight.intensity = 0;
+                        // play alarm immediately on outage
+                        playAlarmSound();
+                        // ensure any previous scheduled shadow attack is cleared, then schedule a 10s attack regardless of player look
+                        if (gameState.timers.shadowTimeout) clearTimeout(gameState.timers.shadowTimeout);
+                        gameState.timers.shadowTimeout = setTimeout(() => {
+                            gameState.timers.shadowTimeout = null;
+                            triggerShadowAttack();
+                        }, 10000);
+                    }, CONFIG.POWER_OUTAGE_DELAY);
+                }
+            }
+        });
+
+        window.addEventListener('keyup', (e) => { if(e.key.toLowerCase() in moveKeys) moveKeys[e.key.toLowerCase()] = false; });
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (gameState.world.bloodVisible && !gameState.events.bloodCleaned && !gameState.events.gameOver) {
+                gameState.animation.dropletSpawnCounter = (gameState.animation.dropletSpawnCounter || 0) + 1;
+                const interval = Math.max(6, CONFIG.DROPLET_SPAWN_INTERVAL - Math.floor(gameState.animation.dripScale * 80));
+                if (gameState.animation.dropletSpawnCounter > interval) {
+                    gameState.animation.dropletSpawnCounter = 0;
+                    spawnDroplet();
+                }
+            }
+
+            const pool = window.__fallingDroplets || [];
+            pool.forEach(obj => {
+                if (!obj.active) return;
+                obj.vel.y -= CONFIG.GRAVITY;
+                obj.mesh.position.addScaledVector(obj.vel, 1);
+                obj.mesh.position.x += (Math.random()-0.5) * 0.002;
+                obj.mesh.position.z += (Math.random()-0.5) * 0.002;
+
+                if (obj.mesh.position.y <= CONFIG.FLOOR_Y) {
+                    if (floorBlood) {
+                        const scaleInc = 0.02 + Math.random()*0.03;
+                        floorBlood.scale.x = Math.min(1.6, (floorBlood.scale.x || 1) + scaleInc);
+                        floorBlood.scale.y = Math.min(1.6, (floorBlood.scale.y || 1) + scaleInc);
+                    }
+                    obj.active = false;
+                    obj.mesh.visible = false;
+                    obj.mesh.position.y = CONFIG.DROPLET_START_Y + 1;
+                    obj.vel.set(0,0,0);
+                }
+                if (obj.active && Math.abs(obj.mesh.position.x - 4.88) < 0.08 && obj.mesh.position.y < 0.8 && obj.mesh.position.y > -1.5) {
+                    if (window.__wallBlood) {
+                        const inc = 0.02 + Math.random()*0.02;
+                        window.__wallBlood.scale.y = Math.min(1.2, (window.__wallBlood.scale.y || 0.2) + inc);
+                        window.__wallBlood.position.y = -0.5 - (1.25 * (1 - (window.__wallBlood.scale.y || 1)));
+                    }
+                    obj.active = false;
+                    obj.mesh.visible = false;
+                }
+            });
+
+            if (controls.isLocked && !gameState.events.gameOver) {
+                const oldPos = camera.position.clone();
+                gameState.timers.auraMessageTimer += 0.016;
+
+                if(gameState.world.bloodVisible && !gameState.events.bloodCleaned && gameState.timers.bloodTimer > 0) {
+                    const timeLeft = Math.ceil(23 - gameState.timers.bloodTimer);
+                    if(timeLeft > 0) document.getElementById('aura-text').innerText = `⚠ AURA: BIOHAZARD DETECTED! CLEAN BLOOD IMMEDIATELY! ${timeLeft}s ⚠`;
+                } else if(gameState.world.bloodVisible && gameState.events.bloodCleaned) document.getElementById('aura-text').innerText = "AURA: FIND THE KEY TO THE ENTERANCE";
+                else if(gameState.world.bloodVisible && !gameState.events.hasMop) document.getElementById('aura-text').innerText = "AURA: ANOMALY DETECTED. STAY CALM.";
+                else if(gameState.world.wiresFixed && gameState.world.isOutage) document.getElementById('aura-text').innerText = "AURA: WIRES REPAIRED. ACTIVATE POWER LEVER.";
+                else if(gameState.world.isOutage && !gameState.world.wiresFixed) document.getElementById('aura-text').innerText = "AURA: CRITICAL - REPAIR DAMAGED WIRES IN POWER ROOM.";
+                else if(gameState.player.batteryCount >= 4 && !gameState.events.flashlightTested) document.getElementById('aura-text').innerText = "AURA: FLASHLIGHT READY. PRESS [F] TO ACTIVATE.";
+                else if(!gameState.events.noteRead && gameState.timers.auraMessageIndex === 2) document.getElementById('aura-text').innerText = "AURA: CHECK THE LOG NOTE ON YOUR BED FOR INSTRUCTIONS.";
+                else if(gameState.timers.auraMessageTimer > 3 && gameState.timers.auraMessageIndex === 0) { gameState.timers.auraMessageTimer = 0; gameState.timers.auraMessageIndex = 1; document.getElementById('aura-text').innerText = gameState.auraMessages[1]; }
+                else if(gameState.timers.auraMessageTimer > 15 && gameState.timers.auraMessageIndex > 0) {
+                    gameState.timers.auraMessageTimer = 0;
+                    gameState.timers.auraMessageIndex = (gameState.timers.auraMessageIndex + 1) % gameState.auraMessages.length;
+                    if(gameState.timers.auraMessageIndex === 0) gameState.timers.auraMessageIndex = 1;
+                    if(gameState.timers.auraMessageIndex === 2 && gameState.events.noteRead) gameState.timers.auraMessageIndex = 3;
+                    document.getElementById('aura-text').innerText = gameState.auraMessages[gameState.timers.auraMessageIndex];
+                }
+
+                if(moveKeys.w) controls.moveForward(CONFIG.PLAYER_SPEED);
+                if(moveKeys.s) controls.moveForward(-CONFIG.PLAYER_SPEED);
+                if(moveKeys.a) controls.moveRight(-CONFIG.PLAYER_SPEED);
+                if(moveKeys.d) controls.moveRight(CONFIG.PLAYER_SPEED);
+
+                if(!isValidPosition(camera.position)) camera.position.copy(oldPos);
+
+                if(gameState.world.bloodVisible && camera.position.x < 5) {
+                    bloodGroup.visible = true;
+                    if(gameState.animation.dripScale < 1) {
+                        gameState.animation.dripScale += CONFIG.BLOOD_DRIP_SPEED * 4;
+                        if (window.__wallBlood) {
+                            window.__wallBlood.scale.y = gameState.animation.dripScale;
+                            window.__wallBlood.position.y = -0.5 - (1.25 * (1 - gameState.animation.dripScale));
+                        }
+                        if (window.__floorBlood) {
+                            window.__floorBlood.scale.set(gameState.animation.dripScale, gameState.animation.dripScale, gameState.animation.dripScale);
+                        }
+                        gameState.animation.droplets.forEach((d, idx) => {
+                            const targetOpacity = Math.min(1, gameState.animation.dripScale * (0.2 + idx * 0.08));
+                            d.material.opacity = THREE.MathUtils.lerp(d.material.opacity || 0, targetOpacity, 0.12);
+                            d.position.y = THREE.MathUtils.lerp(d.position.y, -2.45 + Math.sin(performance.now()*0.001 + idx)*0.005, 0.06);
+                            d.scale.x = d.scale.z = THREE.MathUtils.lerp(d.scale.x, 1 + (0.02*Math.sin(performance.now()*0.002 + idx)), 0.03);
+                        });
+                    }
+                } else {
+                    gameState.animation.droplets.forEach(d => { d.material.opacity = THREE.MathUtils.lerp(d.material.opacity || 0, 0, 0.04); });
+                }
+
+                if(gameState.world.bloodVisible && !gameState.events.bloodCleaned) {
+                    gameState.timers.bloodTimer += 0.016;
+                    if(gameState.timers.bloodTimer > 23) {
+                        gameState.timers.breathTimer += 0.016;
+                        const breathIntensity = Math.sin(gameState.timers.breathTimer * 3) * 0.3;
+                        camera.position.y += breathIntensity * 0.01;
+                        const fadeAmount = (gameState.timers.bloodTimer - 23) / 3;
+                        document.getElementById('scare-flash').style.opacity = Math.min(fadeAmount, 1);
+                        document.getElementById('scare-flash').style.background = 'black';
+                        if(fadeAmount >= 1) document.getElementById('aura-text').innerText = "AURA: LIFE SIGNS CRITICAL. SHIFT TERMINATED.";
+                    }
+                }
+
+                if(!gameState.world.blindsOpen) {
+                    gameState.animation.blindSlats.forEach(s => { if(s.rotation.x > openRot) s.rotation.x -= CONFIG.BLIND_CLOSE_SPEED; });
+                    if(gameState.animation.blindSlats[0].rotation.x <= openRot) gameState.world.blindsOpen = true;
+                }
+
+                if(moveKeys.w || moveKeys.s || moveKeys.a || moveKeys.d) { gameState.animation.walkCycle += CONFIG.WALK_BOB_SPEED; camera.position.y = Math.sin(gameState.animation.walkCycle) * CONFIG.WALK_BOB_AMOUNT; }
+                else camera.position.y = THREE.MathUtils.lerp(camera.position.y, 0, 0.1);
+
+                if(gameState.world.tvOn && gameState.world.powerOn) tvScreen.material.color.setRGB(Math.random(), Math.random(), Math.random());
+                else tvScreen.material.color.set(0x000000);
+
+                feeds.forEach((feed,i) => {
+                    const feedState = gameState.world.monitorFeeds[i];
+                    if(gameState.world.powerOn) {
+                        if(Math.random() > 0.98) { feedState.glitch = true; setTimeout(()=>{ feedState.glitch=false; }, 200); }
+                        feedState.noise = (feedState.noise + 0.02) % 1; feedState.alertTimer += 0.016;
+                        if(!feedState.alert) {
+                            let detectionChance = 0.9995;
+                            if(i===0) detectionChance=0.998; if(i===1) detectionChance=0.9992; if(i===2) detectionChance=0.9985; if(i===3) detectionChance=0.999;
+                            if(gameState.world.isOutage) detectionChance -= 0.002;
+                            if(Math.random() > detectionChance) { feedState.alert = true; feedState.alertTimer = 0; setTimeout(()=>{ feedState.alert = false; }, 3000 + Math.random()*3000); }
+                        }
+                        if(feedState.glitch) feed.material.color.setRGB(Math.random()*0.5, Math.random()*0.5, Math.random()*0.5);
+                        else if(feedState.alert) { const flashIntensity = Math.sin(feedState.alertTimer * 10) * 0.3 + 0.7; feed.material.color.setRGB(flashIntensity, 0, 0); }
+                        else {
+                            const baseGreen = 0.2 + Math.sin(feedState.noise * Math.PI * 2) * 0.1;
+                            if(i===0){ const shadow = Math.random() > 0.97 ? -0.1 : 0; feed.material.color.setRGB(0, baseGreen * 1.5 + shadow, 0); }
+                            else if(i===1){ const flicker = Math.sin(Date.now() * 0.005) * 0.08; feed.material.color.setRGB(0, baseGreen * 1.3 + flicker, 0); }
+                            else if(i===2){ const pulse = Math.sin(Date.now() * 0.001) * 0.1; feed.material.color.setRGB(0, baseGreen * 1.4 + pulse, 0); }
+                            else { const flash = Math.random() > 0.995 ? 0.5 : 0; feed.material.color.setRGB(0, baseGreen * 0.8 + flash, 0); }
+                        }
+                        const anyAlert = gameState.world.monitorFeeds.some(f => f.alert);
+                        if(anyAlert){ screenLight.color.set(0xff0000); screenLight.intensity = 3 + Math.sin(Date.now() * 0.01) * 1; }
+                        else { screenLight.color.set(0x00ff00); screenLight.intensity = 2 + Math.random()*0.5; }
+                    } else { feed.material.color.set(0x000000); screenLight.intensity = 0; }
+                });
+
+                const dir = new THREE.Vector3(); camera.getWorldDirection(dir);
+                // stare-based trigger removed — shadow will appear after the scheduled shadowTimeout regardless of look direction
+                gameState.animation.stareTimer = 0;
+
+                const ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2(), camera);
+                const hits = ray.intersectObjects(scene.children, true);
+                const prompt = document.getElementById('interaction-prompt');
+                if(hits.length > 0 && hits[0].distance < CONFIG.INTERACTION_DISTANCE) {
+                    const obj = hits[0].object;
+                    const targetName = obj.name || (obj.parent && obj.parent.name) || '';
+                    if(targetName === 'entrance_key') { prompt.style.display = 'block'; prompt.innerText = '[P] TO PICK UP KEY'; }
+                    else if(targetName === 'entry_door' && (obj.userData && obj.userData.locked)) { prompt.style.display = 'block'; prompt.innerText = '[E] TO UNLOCK (REQUIRES KEY)'; }
+                    else if(targetName === 'entry_door') { prompt.style.display = 'block'; prompt.innerText = '[E] TO OPEN ENTRANCE'; }
+                    else if(targetName === 'mop' && !gameState.events.hasMop) { prompt.style.display = 'block'; prompt.innerText = '[E] TO PICK UP MOP'; }
+                    else if(targetName === 'blood' && gameState.events.hasMop && !gameState.events.bloodCleaned) { prompt.style.display = 'block'; prompt.innerText = '[E] TO CLEAN BLOOD'; }
+                    else if(targetName && targetName !== 'mop' && targetName !== 'blood') { prompt.style.display = 'block'; prompt.innerText = `[E] TO USE ${targetName.replace('_',' ').toUpperCase()}`; }
+                    else prompt.style.display = 'none';
+                } else prompt.style.display = 'none';
+            }
+
+            if (gameState.events.shadowAttacking && gameState.shadow) {
+                const elapsed = performance.now() - gameState.shadow.startTime;
+                const t = Math.min(1, elapsed / gameState.shadow.duration);
+                const start = new THREE.Vector3(-6.5, -1.6, 0);
+                const target = camera.position.clone().add(new THREE.Vector3(-0.5, -0.2, -0.5));
+                shadowFigure.position.lerpVectors(start, target, t);
+                const s = 1.8 + (2.5 * t);
+                shadowFigure.scale.set(s,s,s);
+
+                // drain player health over the attack so the health bar reflects the event
+                gameState.player.health = Math.max(0, Math.round(100 * (1 - t)));
+                const hb = document.getElementById('health-bar'); if (hb) hb.style.width = gameState.player.health + '%';
+
+                if (t > 0.35 && !gameState.shadow.flash1) {
+                    gameState.shadow.flash1 = true;
+                    const f = document.getElementById('scare-flash');
+                    f.style.background = 'rgba(255,10,10,0.95)';
+                    f.style.opacity = '0.9';
+                    playScareSound();
+                    setTimeout(()=>{ f.style.opacity = '0'; }, 180);
+                }
+                if (t > 0.6 && !gameState.shadow.flash2) {
+                    gameState.shadow.flash2 = true;
+                    const f = document.getElementById('scare-flash');
+                    f.style.background = 'black';
+                    f.style.opacity = '1';
+                    playScareSound();
+                    setTimeout(()=>{ f.style.opacity = '0'; }, 220);
+                }
+
+                if (t > 0.85 && !gameState.shadow.reached) {
+                    gameState.shadow.reached = true;
+                    const f = document.getElementById('scare-flash');
+                    const sequence = [
+                        { bg: 'red', dur: 120 },
+                        { bg: 'black', dur: 140 },
+                        { bg: 'red', dur: 180 },
+                        { bg: 'black', dur: 120 },
+                    ];
+                    let time = 0;
+                    sequence.forEach((step, i) => {
+                        setTimeout(()=>{ f.style.background = step.bg; f.style.opacity = '1'; playScareSound(); }, time);
+                        setTimeout(()=>{ f.style.opacity = '0'; }, time + step.dur * 0.6);
+                        time += step.dur;
+                    });
+                    setTimeout(()=>{ endGameOver(); }, time + 300);
+                }
+            }
+
+            if(gameState.player.flashLightOn && gameState.player.flashlightPower > 0) {
+                gameState.player.flashlightPower -= CONFIG.FLASHLIGHT_DRAIN;
+                if (gameState.player.flashlightPower < 0) gameState.player.flashlightPower = 0;
+                document.getElementById('battery-bar').style.width = gameState.player.flashlightPower + "%";
+                flashLight.intensity = (gameState.player.flashlightPower < 15 && Math.random() > 0.8) ? 5 : 50;
+            } else flashLight.intensity = 0;
+
+            flashLight.position.copy(camera.position);
+            const camDir = new THREE.Vector3(); camera.getWorldDirection(camDir);
+            flashLight.target.position.copy(camera.position).add(camDir);
+
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); });
+    </script>
+</body>
+</html>
